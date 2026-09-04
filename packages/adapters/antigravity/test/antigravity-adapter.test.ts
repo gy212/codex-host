@@ -1123,13 +1123,24 @@ setTimeout(() => { process.exit(0); }, 50);
           await rm(target, { recursive: true, force: true, maxRetries: 5, retryDelay: 50 });
         }
       };
-      const runsDir = path.join(directory, "runs");
+      const runsDir = path.join(directory, "runs").replaceAll("\\", "/");
       const jsPath = path.join(directory, "agy.cjs");
       const scriptContent = `
-const fs = require('fs');
+const fs = require('node:fs');
 const path = require('path');
 if (process.argv.includes("models")) {
   process.stdout.write("gemini-3.7-flash-high\\tGemini 3.7 Flash High\\nclaude-3-7-sonnet\\tClaude 3.7 Sonnet\\n");
+  process.exit(0);
+}
+if (process.argv.some(a => a === "--print=/usage" || a.startsWith("--print=/"))) {
+  process.stdout.write(JSON.stringify({
+    event: "command_result",
+    command: { name: "usage", data: { groups: [] } }
+  }) + "\\n");
+  process.stdout.write(JSON.stringify({
+    event: "result",
+    result: { conversation_id: "conv-usage", status: "SUCCESS", num_turns: 0 }
+  }) + "\\n");
   process.exit(0);
 }
 const runsDir = ${JSON.stringify(runsDir)};
@@ -1190,8 +1201,8 @@ if (count === 0) {
         }
         expect(turn1Usage).not.toBeNull();
         expect(turn1Usage?.contextWindowTokens).toBe(1_048_576);
-        expect(turn1Usage).not.toHaveProperty("cachedInputTokens");
-        expect(turn1Usage).not.toHaveProperty("cacheHitRatePercent");
+        expect(turn1Usage?.cachedInputTokens).toBe(0);
+        expect(turn1Usage?.cacheHitRatePercent).toBe(0);
 
         // Switch to Claude (200k window)
         const selectClaude = await session.execute({
