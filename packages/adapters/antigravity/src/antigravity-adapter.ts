@@ -461,7 +461,7 @@ async function runBuffered(
       clearTimeout(timer);
       reject(error);
     });
-    child.once("exit", (code) => {
+    child.once("close", (code) => {
       clearTimeout(timer);
       if (code === 0) resolve({ stdout, stderr });
       else reject(new Error(stderr.trim() || `Antigravity CLI exited with code ${String(code)}`));
@@ -681,7 +681,7 @@ class AntigravitySession implements HarnessSession {
         });
       });
     });
-    child.once("exit", (code) => {
+    child.once("close", (code) => {
       this.#enqueue(active, () => {
         void unlink(active.logPath).catch(() => undefined);
         if (this.#active !== active || active.receivedResult) return;
@@ -1513,7 +1513,7 @@ export class AntigravityAdapter implements HarnessAdapter {
         };
       }
     }
-    const sessionEnvironment = input.environment ?? this.#environment;
+    const sessionEnvironment = { ...this.#environment, ...(input.environment ?? {}) };
     const history = await AntigravityHistory.open({
       environment: sessionEnvironment,
       ...(nativeRef ? { nativeSessionId: nativeRef.nativeSessionId } : {}),
