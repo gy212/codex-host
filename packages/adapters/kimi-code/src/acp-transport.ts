@@ -7,6 +7,7 @@ import {
   PROTOCOL_VERSION,
   ndJsonStream,
   type Client,
+  type AvailableCommand,
   type CreateElicitationRequest,
   type CreateElicitationResponse,
   type InitializeResponse,
@@ -74,13 +75,17 @@ export type KimiTransportEvent =
   | { type: "usage"; update: Record<string, unknown> }
   | { type: "config.update"; configOptions: unknown[] }
   | { type: "mode.update"; currentModeId: string }
-  | { type: "commands.update"; commands: string[] };
+  | { type: "commands.update"; commands: AvailableCommand[] };
 
 export interface ActivePromptHandler {
   onEvent(event: KimiTransportEvent): void;
   onPermission(request: RequestPermissionRequest): Promise<RequestPermissionResponse>;
   onElicitation(request: CreateElicitationRequest): Promise<CreateElicitationResponse>;
 }
+
+export type SessionEventHandler = (event: Extract<KimiTransportEvent, {
+  type: "config.update" | "mode.update" | "commands.update";
+}>) => void;
 
 export interface KimiAcpTransportOptions {
   cwd: string;
@@ -135,12 +140,35 @@ export function projectKimiToolUpdate(
   };
 }
 
+export function projectKimiCommandsUpdate(
+  update: Record<string, unknown>,
+): Extract<KimiTransportEvent, { type: "commands.update" }> | null {
+  if (update.sessionUpdate !== "available_commands_update") return null;
+  const commands = Array.isArray(update.availableCommands)
+    ? update.availableCommands.flatMap((raw) => {
+        if (!raw || typeof raw !== "object") return [];
+        const command = raw as Record<string, unknown>;
+        if (typeof command.name !== "string" || !command.name.trim()) return [];
+        return [{
+          name: command.name,
+          description: typeof command.description === "string" ? command.description : "",
+          ...(command.input && typeof command.input === "object"
+            ? { input: command.input as Exclude<AvailableCommand["input"], undefined> }
+            : {}),
+        }];
+      })
+    : [];
+  return { type: "commands.update", commands };
+}
+
 export class KimiAcpTransport {
   #options: KimiAcpTransportOptions;
   #child: ChildProcessWithoutNullStreams | null = null;
   #connection: ClientSideConnection | null = null;
   #initializeResponse: InitializeResponse | null = null;
   #activePrompt: ActivePromptHandler | null = null;
+  #sessionEventHandler: SessionEventHandler | null = null;
+  #pendingSessionEvents: Parameters<SessionEventHandler>[0][] = [];
   #sessionId: string | null = null;
   #stderrTail = "";
   #closed = false;
@@ -165,6 +193,17 @@ export class KimiAcpTransport {
 
   setActivePromptHandler(handler: ActivePromptHandler | null): void {
     this.#activePrompt = handler;
+  }
+
+  setSessionEventHandler(handler: SessionEventHandler | null): void {
+    this.#sessionEventHandler = handler;
+    if (!handler) return;
+    for (const event of this.#pendingSessionEvents.splice(0)) handler(event);
+  }
+
+  #emitSessionEvent(event: Parameters<SessionEventHandler>[0]): void {
+    if (this.#sessionEventHandler) this.#sessionEventHandler(event);
+    else this.#pendingSessionEvents.push(event);
   }
 
   async inspect(): Promise<{
@@ -496,6 +535,7 @@ export class KimiAcpTransport {
     const sessionUpdate = typeof update.sessionUpdate === "string" ? update.sessionUpdate : undefined;
     const textEvent = projectKimiTextUpdate(update);
     const toolEvent = projectKimiToolUpdate(update);
+    const commandsEvent = projectKimiCommandsUpdate(update);
 
     if (textEvent) {
       this.#activePrompt?.onEvent(textEvent);
@@ -505,16 +545,15 @@ export class KimiAcpTransport {
       this.#activePrompt?.onEvent({ type: "usage", update });
     } else if (sessionUpdate === "config_option_update") {
       const configOptions = Array.isArray(update.configOptions) ? update.configOptions : [];
-      this.#activePrompt?.onEvent({ type: "config.update", configOptions });
+      this.#emitSessionEvent({ type: "config.update", configOptions });
       for (const listener of this.#pendingConfigUpdates) {
         listener(configOptions);
       }
     } else if (sessionUpdate === "current_mode_update") {
       const currentModeId = typeof update.currentModeId === "string" ? update.currentModeId : "";
-      this.#activePrompt?.onEvent({ type: "mode.update", currentModeId });
-    } else if (sessionUpdate === "available_commands_update") {
-      const commands = Array.isArray(update.commands) ? (update.commands as string[]) : [];
-      this.#activePrompt?.onEvent({ type: "commands.update", commands });
+      this.#emitSessionEvent({ type: "mode.update", currentModeId });
+    } else if (commandsEvent) {
+      this.#emitSessionEvent(commandsEvent);
     }
   }
 

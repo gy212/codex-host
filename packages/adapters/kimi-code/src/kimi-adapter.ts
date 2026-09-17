@@ -29,6 +29,7 @@ import {
   KimiTransportError,
   type ActivePromptHandler,
   type KimiAcpTransportOptions,
+  type SessionEventHandler,
 } from "./acp-transport.js";
 import { resolveKimiExecutable } from "./command.js";
 import {
@@ -65,6 +66,7 @@ export interface KimiAcpTransportLike {
   readonly sessionId: string | null;
   readonly isClosed: boolean;
   setActivePromptHandler(handler: ActivePromptHandler | null): void;
+  setSessionEventHandler(handler: SessionEventHandler | null): void;
   inspect(): Promise<{
     initialize: InitializeResponse;
     authReady: boolean;

@@ -20,18 +20,23 @@ import {
   KimiSession,
 } from "../src/kimi-session.js";
 import type { KimiAcpTransportLike } from "../src/kimi-adapter.js";
-import { projectKimiToolUpdate, type ActivePromptHandler, type KimiTransportEvent } from "../src/acp-transport.js";
+import { projectKimiToolUpdate, type ActivePromptHandler, type SessionEventHandler } from "../src/acp-transport.js";
 import { encodeKimiModelRef } from "../src/models.js";
 
 class MockKimiTransport implements KimiAcpTransportLike {
   sessionId: string | null = "session-mock-1";
   isClosed = false;
   activeHandler: ActivePromptHandler | null = null;
+  sessionEventHandler: SessionEventHandler | null = null;
   configOptionsSet: Array<{ configId: string; value: string }> = [];
   cancelled = false;
 
   setActivePromptHandler(handler: ActivePromptHandler | null): void {
     this.activeHandler = handler;
+  }
+
+  setSessionEventHandler(handler: SessionEventHandler | null): void {
+    this.sessionEventHandler = handler;
   }
 
   async inspect() {

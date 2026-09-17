@@ -15,6 +15,7 @@ import {
 } from "../src/kimi-adapter.js";
 import { KimiExecutableError } from "../src/command.js";
 import { KimiTransportError } from "../src/acp-transport.js";
+import type { SessionEventHandler } from "../src/acp-transport.js";
 import { encodeKimiModelRef } from "../src/models.js";
 
 class FakeTransport implements KimiAcpTransportLike {
@@ -27,12 +28,22 @@ class FakeTransport implements KimiAcpTransportLike {
   openKinds: string[] = [];
 
   setActivePromptHandler = vi.fn();
+  sessionEventHandler: SessionEventHandler | null = null;
+  pendingSessionEvents: Parameters<SessionEventHandler>[0][] = [];
+  setSessionEventHandler(handler: SessionEventHandler | null) {
+    this.sessionEventHandler = handler;
+    if (handler) for (const event of this.pendingSessionEvents.splice(0)) handler(event);
+  }
   inspect = vi.fn(async () => ({
     initialize: { protocolVersion: this.initVersion } as any,
     authReady: this.authReady,
   }));
   openSession = vi.fn(async (input: { kind: string; sessionId?: string; cwd?: string }) => {
     this.openKinds.push(input.kind);
+    this.pendingSessionEvents.push({
+      type: "commands.update",
+      commands: [{ name: "compact", description: "Compact the current session", input: { hint: "instructions" } }],
+    });
     return {
       sessionId: input.sessionId || "session-created",
       configOptions: this.configOptions(),
@@ -244,6 +255,16 @@ effort = "medium"
           { configId: "mode", value: "yolo" },
         ]),
       );
+      if (result.ok) {
+        const commands = await result.value.commands?.list();
+        expect(commands?.ok && commands.value.commands).toEqual([{
+          id: "compact",
+          invocation: "/compact",
+          label: "compact",
+          argumentMode: "text",
+          description: "Compact the current session",
+        }]);
+      }
     });
 
     it("resumes existing session when native files exist", async () => {

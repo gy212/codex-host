@@ -3,6 +3,7 @@ import { setTimeout as delay } from "node:timers/promises";
 import type {
   CreateElicitationRequest,
   CreateElicitationResponse,
+  AvailableCommand,
   PromptResponse,
   RequestPermissionRequest,
   RequestPermissionResponse,
@@ -152,7 +153,7 @@ export class KimiSession implements HarnessSession {
   } | null = null;
   #activeTurnPromise: Promise<void> | null = null;
   #activeInteraction: ActiveInteraction | null = null;
-  #availableCommands: string[] = [];
+  #availableCommands: AvailableCommand[] = [];
   #turnCount = 0;
 
   constructor(options: KimiSessionOptions) {
@@ -163,6 +164,7 @@ export class KimiSession implements HarnessSession {
     this.#usage = options.initialUsage ?? null;
     if (options.homeDirectory) this.#homeDirectory = options.homeDirectory;
     this.outputs = this.#channel.outputs;
+    this.#transport.setSessionEventHandler((event) => this.#handleSessionEvent(event));
   }
 
   get initialState(): HarnessSessionState {
@@ -182,12 +184,12 @@ export class KimiSession implements HarnessSession {
       list: async () =>
         ok(
           harnessCommandCatalogSchema.parse({
-            commands: this.#availableCommands.map((id) => ({
-              id,
-              invocation: `/${id}`,
-              label: id,
-              argumentMode: "text" as const,
-              description: `Kimi slash command /${id}`,
+            commands: this.#availableCommands.map((command) => ({
+              id: command.name,
+              invocation: `/${command.name}`,
+              label: command.name,
+              argumentMode: command.input ? "text" as const : "none" as const,
+              ...(command.description.trim() ? { description: command.description } : {}),
             })),
           }),
         ),
@@ -273,6 +275,7 @@ export class KimiSession implements HarnessSession {
   async close(): Promise<void> {
     if (this.#closed) return;
     this.#closed = true;
+    this.#transport.setSessionEventHandler(null);
 
     if (this.#activeInteraction) {
       this.#activeInteraction.resolve({ outcome: { outcome: "cancelled" }, action: "cancel" });
@@ -305,6 +308,19 @@ export class KimiSession implements HarnessSession {
       kind: "event",
       event: { type: "session.state.changed", state: { ...this.#state } },
     });
+  }
+
+  #handleSessionEvent(event: Extract<KimiTransportEvent, {
+    type: "config.update" | "mode.update" | "commands.update";
+  }>): void {
+    if (event.type === "commands.update") {
+      this.#availableCommands = [...event.commands];
+    } else if (event.type === "config.update") {
+      this.#applyConfigOptions(event.configOptions);
+    } else if (isKimiModeId(event.currentModeId)) {
+      this.#state.effectivePermissionModeId = harnessPermissionModeIdSchema.parse(event.currentModeId);
+      this.#channel.emit({ kind: "event", event: { type: "session.state.changed", state: { ...this.#state } } });
+    }
   }
 
   async #handleTurnStart(command: TurnStartCommand): Promise<HarnessResult<TurnStartAccepted>> {
@@ -453,24 +469,15 @@ export class KimiSession implements HarnessSession {
             break;
           }
           case "commands.update": {
-            this.#availableCommands = [...event.commands];
+            this.#handleSessionEvent(event);
             break;
           }
           case "config.update": {
-            this.#applyConfigOptions(event.configOptions);
+            this.#handleSessionEvent(event);
             break;
           }
           case "mode.update": {
-            if (isKimiModeId(event.currentModeId)) {
-              this.#state.effectivePermissionModeId = harnessPermissionModeIdSchema.parse(event.currentModeId);
-              this.#channel.emit({
-                kind: "event",
-                event: {
-                  type: "session.state.changed",
-                  state: { ...this.#state },
-                },
-              });
-            }
+            this.#handleSessionEvent(event);
             break;
           }
         }

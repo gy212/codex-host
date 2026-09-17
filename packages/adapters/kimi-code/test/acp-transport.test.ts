@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { projectKimiTextUpdate, projectKimiToolUpdate } from "../src/acp-transport.js";
+import { projectKimiCommandsUpdate, projectKimiTextUpdate, projectKimiToolUpdate } from "../src/acp-transport.js";
 
 describe("Kimi ACP transport projection", () => {
   it("reads agent message and thought text from ACP content blocks", () => {
@@ -28,6 +28,24 @@ describe("Kimi ACP transport projection", () => {
       name: "Bash",
       kind: "execute",
       args: { command: "cat probe.txt" },
+    });
+  });
+
+  it("reads native command descriptors from availableCommands", () => {
+    expect(projectKimiCommandsUpdate({
+      sessionUpdate: "available_commands_update",
+      availableCommands: [{
+        name: "compact",
+        description: "Compact the current session",
+        input: { hint: "optional instructions" },
+      }],
+    })).toEqual({
+      type: "commands.update",
+      commands: [{
+        name: "compact",
+        description: "Compact the current session",
+        input: { hint: "optional instructions" },
+      }],
     });
   });
 });
