@@ -80,6 +80,7 @@ import {
   parseKimiUsage,
   projectKimiApprovalRequest,
   projectKimiElicitationRequest,
+  readAcpToolContentText,
 } from "./projection.js";
 
 const kimiHarnessId: HarnessId = harnessIdSchema.parse("kimi-code");
@@ -373,7 +374,9 @@ export class KimiSession implements HarnessSession {
             break;
           }
           case "tool.call": {
-            const state = accumulator.getOrCreate(event.toolCallId, turnId, event.name);
+            const state = accumulator.getOrCreate(event.toolCallId, turnId, event.name, event.kind);
+            state.name = event.name;
+            if (event.kind) state.kind = event.kind;
             state.rawInput = event.args;
             if (!state.itemStartedEmitted && state.rawInput) {
               state.itemStartedEmitted = true;
@@ -386,12 +389,12 @@ export class KimiSession implements HarnessSession {
             break;
           }
           case "tool.update": {
-            const state = accumulator.getOrCreate(event.toolCallId, turnId);
-            if (event.rawInput) state.rawInput = event.rawInput;
-            if (event.rawOutput) state.rawOutput = event.rawOutput;
-            if (typeof event.content === "string") {
-              state.contentAccumulator = event.content;
-            }
+            const state = accumulator.getOrCreate(event.toolCallId, turnId, event.name, event.kind);
+            if (event.name) state.name = event.name;
+            if (event.kind) state.kind = event.kind;
+            if (event.rawInput !== undefined) state.rawInput = event.rawInput;
+            if (event.rawOutput !== undefined) state.rawOutput = event.rawOutput;
+            if (event.content !== undefined) state.contentAccumulator = readAcpToolContentText(event.content);
 
             if (!state.itemStartedEmitted && (state.rawInput || state.contentAccumulator)) {
               state.itemStartedEmitted = true;

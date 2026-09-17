@@ -186,6 +186,7 @@ export function formatElicitationResponse(
 export interface ToolCallAccumulatorState {
   toolCallId: string;
   name: string;
+  kind?: string;
   rawInput?: unknown;
   rawOutput?: unknown;
   contentAccumulator: string;
@@ -197,13 +198,14 @@ export interface ToolCallAccumulatorState {
 export class KimiToolCallAccumulator {
   private readonly calls = new Map<string, ToolCallAccumulatorState>();
 
-  getOrCreate(toolCallId: string, turnId: HostTurnId, name = "Tool"): ToolCallAccumulatorState {
+  getOrCreate(toolCallId: string, turnId: HostTurnId, name = "Tool", kind?: string): ToolCallAccumulatorState {
     let state = this.calls.get(toolCallId);
     if (!state) {
       const sanitizedId = toolCallId.replace(/[^A-Za-z0-9._~-]/g, "_");
       state = {
         toolCallId,
         name,
+        ...(kind ? { kind } : {}),
         contentAccumulator: "",
         status: "pending",
         itemStartedEmitted: false,
@@ -227,7 +229,7 @@ export function createHostItemFromToolState(
   state: ToolCallAccumulatorState,
   cwd?: string,
 ): HostItem {
-  const isBash = state.name.toLowerCase() === "bash" || state.name.toLowerCase() === "shell" || state.name.toLowerCase() === "terminal";
+  const isBash = state.kind === "execute" || state.name.toLowerCase() === "bash" || state.name.toLowerCase() === "shell" || state.name.toLowerCase() === "terminal";
   const rawInput = state.rawInput as Record<string, unknown> | undefined;
 
   if (isBash) {
@@ -276,6 +278,18 @@ export function createHostItemFromToolState(
       : {}),
   };
   return toolItem;
+}
+
+export function readAcpToolContentText(content: unknown): string {
+  const parts = Array.isArray(content) ? content : [content];
+  return parts.flatMap((part) => {
+    if (!part || typeof part !== "object") return [];
+    const block = part as Record<string, unknown>;
+    const nested = block.type === "content" && block.content && typeof block.content === "object"
+      ? block.content as Record<string, unknown>
+      : block;
+    return nested.type === "text" && typeof nested.text === "string" ? [nested.text] : [];
+  }).join("\n");
 }
 
 export function parseKimiUsage(update: Record<string, unknown>): HostUsage | null {

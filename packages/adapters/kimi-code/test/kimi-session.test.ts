@@ -20,7 +20,7 @@ import {
   KimiSession,
 } from "../src/kimi-session.js";
 import type { KimiAcpTransportLike } from "../src/kimi-adapter.js";
-import type { ActivePromptHandler, KimiTransportEvent } from "../src/acp-transport.js";
+import { projectKimiToolUpdate, type ActivePromptHandler, type KimiTransportEvent } from "../src/acp-transport.js";
 import { encodeKimiModelRef } from "../src/models.js";
 
 class MockKimiTransport implements KimiAcpTransportLike {
@@ -300,19 +300,21 @@ describe("KimiSession", () => {
     it("maps Bash tool to commandExecution item", async () => {
       const transport = new MockKimiTransport();
       transport.promptMock = vi.fn(async (_text: string, handler: ActivePromptHandler) => {
-        handler.onEvent({
-          type: "tool.call",
+        const call = projectKimiToolUpdate({
+          sessionUpdate: "tool_call",
           toolCallId: "tool-b1",
-          name: "Bash",
-          args: { command: "ls -la" },
+          title: "Bash",
+          kind: "execute",
+          rawInput: { command: "cat probe.txt" },
         });
-        handler.onEvent({
-          type: "tool.update",
+        const update = projectKimiToolUpdate({
+          sessionUpdate: "tool_call_update",
           toolCallId: "tool-b1",
           status: "completed",
-          rawInput: { command: "ls -la" },
-          rawOutput: "total 0",
+          content: [{ type: "content", content: { type: "text", text: "KIMI_PROBE_OK\n" } }],
         });
+        if (call) handler.onEvent(call);
+        if (update) handler.onEvent(update);
         return { stopReason: "end_turn" };
       });
 
@@ -344,7 +346,13 @@ describe("KimiSession", () => {
       );
       expect(cmdStarted).toBeDefined();
       if (cmdStarted && cmdStarted.kind === "event" && cmdStarted.event.type === "item.started" && cmdStarted.event.item.type === "commandExecution") {
-        expect(cmdStarted.event.item.command).toBe("ls -la");
+        expect(cmdStarted.event.item.command).toBe("cat probe.txt");
+      }
+      const cmdCompleted = outputs.find(
+        (o) => o.kind === "event" && o.event.type === "item.completed" && o.event.snapshot.item.type === "commandExecution",
+      );
+      if (cmdCompleted?.kind === "event" && cmdCompleted.event.type === "item.completed" && cmdCompleted.event.snapshot.item.type === "commandExecution") {
+        expect(cmdCompleted.event.snapshot.item.output).toBe("KIMI_PROBE_OK\n");
       }
     });
   });

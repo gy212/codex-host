@@ -69,8 +69,8 @@ export async function withTimeout<T>(
 export type KimiTransportEvent =
   | { type: "agent.text"; text: string }
   | { type: "agent.thought"; text: string }
-  | { type: "tool.call"; toolCallId: string; name: string; args?: unknown }
-  | { type: "tool.update"; toolCallId: string; status?: string; rawInput?: unknown; rawOutput?: unknown; content?: unknown }
+  | { type: "tool.call"; toolCallId: string; name: string; kind?: string; args?: unknown }
+  | { type: "tool.update"; toolCallId: string; name?: string; kind?: string; status?: string; rawInput?: unknown; rawOutput?: unknown; content?: unknown }
   | { type: "usage"; update: Record<string, unknown> }
   | { type: "config.update"; configOptions: unknown[] }
   | { type: "mode.update"; currentModeId: string }
@@ -103,6 +103,36 @@ export function projectKimiTextUpdate(
   if (update.sessionUpdate === "agent_message_chunk") return { type: "agent.text", text };
   if (update.sessionUpdate === "agent_thought_chunk") return { type: "agent.thought", text };
   return null;
+}
+
+export function projectKimiToolUpdate(
+  update: Record<string, unknown>,
+): Extract<KimiTransportEvent, { type: "tool.call" | "tool.update" }> | null {
+  const toolCallId = typeof update.toolCallId === "string" ? update.toolCallId : "";
+  const name = typeof update.title === "string" ? update.title : undefined;
+  const kind = typeof update.kind === "string" ? update.kind : undefined;
+
+  if (update.sessionUpdate === "tool_call") {
+    return {
+      type: "tool.call",
+      toolCallId,
+      name: name ?? "Tool",
+      ...(kind ? { kind } : {}),
+      ...(update.rawInput !== undefined ? { args: update.rawInput } : {}),
+    };
+  }
+
+  if (update.sessionUpdate !== "tool_call_update") return null;
+  return {
+    type: "tool.update",
+    toolCallId,
+    ...(name ? { name } : {}),
+    ...(kind ? { kind } : {}),
+    ...(typeof update.status === "string" ? { status: update.status } : {}),
+    ...(update.rawInput !== undefined ? { rawInput: update.rawInput } : {}),
+    ...(update.rawOutput !== undefined ? { rawOutput: update.rawOutput } : {}),
+    ...(update.content !== undefined ? { content: update.content } : {}),
+  };
 }
 
 export class KimiAcpTransport {
@@ -465,28 +495,12 @@ export class KimiAcpTransport {
 
     const sessionUpdate = typeof update.sessionUpdate === "string" ? update.sessionUpdate : undefined;
     const textEvent = projectKimiTextUpdate(update);
+    const toolEvent = projectKimiToolUpdate(update);
 
     if (textEvent) {
       this.#activePrompt?.onEvent(textEvent);
-    } else if (sessionUpdate === "tool_call") {
-      const toolCallId = typeof update.toolCallId === "string" ? update.toolCallId : "";
-      const name = typeof update.name === "string" ? update.name : "Tool";
-      const args = update.args;
-      this.#activePrompt?.onEvent({ type: "tool.call", toolCallId, name, args });
-    } else if (sessionUpdate === "tool_call_update") {
-      const toolCallId = typeof update.toolCallId === "string" ? update.toolCallId : "";
-      const status = typeof update.status === "string" ? update.status : undefined;
-      const rawInput = update.rawInput;
-      const rawOutput = update.rawOutput;
-      const content = update.content;
-      this.#activePrompt?.onEvent({
-        type: "tool.update",
-        toolCallId,
-        ...(status !== undefined ? { status } : {}),
-        ...(rawInput !== undefined ? { rawInput } : {}),
-        ...(rawOutput !== undefined ? { rawOutput } : {}),
-        ...(content !== undefined ? { content } : {}),
-      });
+    } else if (toolEvent) {
+      this.#activePrompt?.onEvent(toolEvent);
     } else if (sessionUpdate === "usage_update") {
       this.#activePrompt?.onEvent({ type: "usage", update });
     } else if (sessionUpdate === "config_option_update") {
