@@ -505,8 +505,11 @@ export async function readKimiSessionSnapshot(
   let wireContent = "";
   try {
     wireContent = await readFile(wirePath, "utf8");
-  } catch {
-    return { turns: [] };
+  } catch (error) {
+    throw new Error(
+      `Failed to read Kimi native history ${wirePath}: ${error instanceof Error ? error.message : String(error)}`,
+      { cause: error },
+    );
   }
 
   const turns = await parseKimiWireLog(wireContent, sessionId, located.mainHomeDir);

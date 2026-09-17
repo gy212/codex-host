@@ -277,12 +277,10 @@ describe("Kimi Code History & Diff", () => {
   });
 
   describe("readKimiSessionSnapshot", () => {
-    it("reads snapshot using located directory", async () => {
-      const sessionId = "session-snap";
+    async function createSnapshotSession(sessionId: string): Promise<string> {
       const sessionDir = path.join(tempDir, "sessions", sessionId);
       const mainHomeDir = path.join(sessionDir, "agents", "main");
       await mkdir(mainHomeDir, { recursive: true });
-
       await writeFile(
         path.join(tempDir, "session_index.jsonl"),
         JSON.stringify({ sessionId, sessionDir }) + "\n",
@@ -291,6 +289,12 @@ describe("Kimi Code History & Diff", () => {
         path.join(sessionDir, "state.json"),
         JSON.stringify({ id: sessionId, version: 2, cwd: tempDir }),
       );
+      return mainHomeDir;
+    }
+
+    it("reads snapshot using located directory", async () => {
+      const sessionId = "session-snap";
+      const mainHomeDir = await createSnapshotSession(sessionId);
       await writeFile(
         path.join(mainHomeDir, "wire.jsonl"),
         JSON.stringify({
@@ -312,6 +316,23 @@ describe("Kimi Code History & Diff", () => {
       const snapshot = await readKimiSessionSnapshot(sessionId, { kimiCodeHome: tempDir });
       expect(snapshot.turns).toHaveLength(1);
       expect(snapshot.turns[0]!.outcome.status).toBe("succeeded");
+    });
+
+    it("preserves a present but empty native history", async () => {
+      const sessionId = "session-empty";
+      const mainHomeDir = await createSnapshotSession(sessionId);
+      await writeFile(path.join(mainHomeDir, "wire.jsonl"), "");
+
+      await expect(readKimiSessionSnapshot(sessionId, { kimiCodeHome: tempDir })).resolves.toEqual({ turns: [] });
+    });
+
+    it("reports a missing native history instead of returning an empty snapshot", async () => {
+      const sessionId = "session-missing-wire";
+      await createSnapshotSession(sessionId);
+
+      await expect(readKimiSessionSnapshot(sessionId, { kimiCodeHome: tempDir })).rejects.toThrow(
+        /Failed to read Kimi native history.*wire\.jsonl/,
+      );
     });
   });
 });
