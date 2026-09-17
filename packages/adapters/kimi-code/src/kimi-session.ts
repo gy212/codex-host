@@ -71,7 +71,9 @@ import {
 } from "./history.js";
 import {
   decodeKimiModelRefId,
+  encodeKimiModelRef,
   isKimiModeId,
+  readKimiEffectiveConfig,
 } from "./models.js";
 import {
   createHostItemFromToolState,
@@ -292,6 +294,19 @@ export class KimiSession implements HarnessSession {
     this.#channel.end();
   }
 
+  #applyConfigOptions(configOptions: unknown[]): void {
+    const effective = readKimiEffectiveConfig(configOptions);
+    if (effective.modelAlias) this.#state.effectiveModel = encodeKimiModelRef(effective.modelAlias);
+    if (effective.thinkingOptionId) this.#state.effectiveThinkingOptionId = effective.thinkingOptionId;
+    if (effective.permissionModeId) {
+      this.#state.effectivePermissionModeId = harnessPermissionModeIdSchema.parse(effective.permissionModeId);
+    }
+    this.#channel.emit({
+      kind: "event",
+      event: { type: "session.state.changed", state: { ...this.#state } },
+    });
+  }
+
   async #handleTurnStart(command: TurnStartCommand): Promise<HarnessResult<TurnStartAccepted>> {
     if (this.#activeTurn) {
       return err("sessionBusy", "Another turn is already in progress");
@@ -442,6 +457,7 @@ export class KimiSession implements HarnessSession {
             break;
           }
           case "config.update": {
+            this.#applyConfigOptions(event.configOptions);
             break;
           }
           case "mode.update": {
@@ -730,15 +746,11 @@ export class KimiSession implements HarnessSession {
     }
 
     try {
-      await this.#transport.setConfigOption("model", alias);
-      this.#state.effectiveModel = command.model;
-      this.#channel.emit({
-        kind: "event",
-        event: {
-          type: "session.state.changed",
-          state: { ...this.#state },
-        },
-      });
+      const confirmed = await this.#transport.setConfigOption("model", alias);
+      this.#applyConfigOptions(confirmed);
+      if (this.#state.effectiveModel?.id !== command.model.id) {
+        return err("unavailable", `Kimi did not confirm model ${alias}`);
+      }
       return ok({ completed: true });
     } catch (error) {
       return err(
@@ -752,15 +764,11 @@ export class KimiSession implements HarnessSession {
     command: ThinkingSelectCommand,
   ): Promise<HarnessResult<ThinkingSelectCompleted>> {
     try {
-      await this.#transport.setConfigOption("thinking", command.thinkingOptionId);
-      this.#state.effectiveThinkingOptionId = command.thinkingOptionId;
-      this.#channel.emit({
-        kind: "event",
-        event: {
-          type: "session.state.changed",
-          state: { ...this.#state },
-        },
-      });
+      const confirmed = await this.#transport.setConfigOption("thinking", command.thinkingOptionId);
+      this.#applyConfigOptions(confirmed);
+      if (this.#state.effectiveThinkingOptionId !== command.thinkingOptionId) {
+        return err("unavailable", `Kimi did not confirm thinking option ${command.thinkingOptionId}`);
+      }
       return ok({ completed: true });
     } catch (error) {
       return err(
@@ -778,15 +786,11 @@ export class KimiSession implements HarnessSession {
     }
 
     try {
-      await this.#transport.setConfigOption("mode", command.permissionModeId);
-      this.#state.effectivePermissionModeId = command.permissionModeId;
-      this.#channel.emit({
-        kind: "event",
-        event: {
-          type: "session.state.changed",
-          state: { ...this.#state },
-        },
-      });
+      const confirmed = await this.#transport.setConfigOption("mode", command.permissionModeId);
+      this.#applyConfigOptions(confirmed);
+      if (this.#state.effectivePermissionModeId !== command.permissionModeId) {
+        return err("unavailable", `Kimi did not confirm permission mode ${command.permissionModeId}`);
+      }
       return ok({ completed: true });
     } catch (error) {
       return err(

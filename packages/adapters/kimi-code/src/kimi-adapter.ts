@@ -39,9 +39,11 @@ import {
 import {
   buildModelCatalogFromConfig,
   decodeKimiModelRefId,
+  encodeKimiModelRef,
   isKimiModeId,
   kimiPermissionModeCatalog,
   parseKimiConfigToml,
+  readKimiEffectiveConfig,
   type KimiNativeConfig,
 } from "./models.js";
 import {
@@ -97,6 +99,39 @@ export interface KimiAdapterOptions {
   commandTimeoutMs?: number;
   closeTimeoutMs?: number;
   homeDirectory?: string;
+}
+
+async function applyRequestedConfig(
+  transport: KimiAcpTransportLike,
+  configOptions: unknown[] | undefined,
+  requested: Array<{ id: "model" | "thinking" | "mode"; value: string }>,
+): Promise<unknown[]> {
+  let confirmed = configOptions ?? [];
+  for (const option of requested) {
+    confirmed = await transport.setConfigOption(option.id, option.value);
+    const effective = readKimiEffectiveConfig(confirmed);
+    const actual = option.id === "model"
+      ? effective.modelAlias
+      : option.id === "thinking"
+        ? effective.thinkingOptionId
+        : effective.permissionModeId;
+    if (actual !== option.value) {
+      throw new Error(`Kimi did not confirm ${option.id}=${option.value}`);
+    }
+  }
+  return confirmed;
+}
+
+function stateFromConfig(sessionId: string, cwd: string, configOptions: unknown[]): HarnessSessionState {
+  const effective = readKimiEffectiveConfig(configOptions);
+  return {
+    nativeRef: createKimiNativeSessionRef(sessionId, cwd),
+    ...(effective.modelAlias ? { effectiveModel: encodeKimiModelRef(effective.modelAlias) } : {}),
+    ...(effective.thinkingOptionId ? { effectiveThinkingOptionId: effective.thinkingOptionId } : {}),
+    ...(effective.permissionModeId
+      ? { effectivePermissionModeId: harnessPermissionModeIdSchema.parse(effective.permissionModeId) }
+      : {}),
+  };
 }
 
 export class KimiAdapter implements HarnessAdapter {
@@ -273,52 +308,16 @@ export class KimiAdapter implements HarnessAdapter {
     if (input.kind === "create") {
       try {
         const sessionInfo = await transport.openSession({ kind: "create", cwd });
-
-        // Build initial session state
-        const inspection = await this.inspect({ cwd, refresh: false }).catch(() => null);
-        const defaultModel = inspection?.status === "ready"
-          ? inspection.catalog.defaultModel || inspection.catalog.models[0]?.ref
-          : undefined;
-        const defaultThinking = inspection?.status === "ready"
-          ? inspection.catalog.defaultThinkingOptionId
-          : undefined;
-
-        const effectiveModel = input.model || defaultModel;
-        const effectiveThinkingOptionId = input.thinkingOptionId || defaultThinking;
-        const effectivePermissionModeId = input.permissionModeId || harnessPermissionModeIdSchema.parse("default");
-
-        const state: HarnessSessionState = {
-          nativeRef: createKimiNativeSessionRef(sessionInfo.sessionId, cwd),
-          ...(effectiveModel ? { effectiveModel } : {}),
-          ...(effectiveThinkingOptionId ? { effectiveThinkingOptionId } : {}),
-          effectivePermissionModeId,
-        };
-
-        // Apply requested options to native ACP session
-        if (input.model) {
-          try {
-            const alias = decodeKimiModelRefId(input.model.id);
-            await transport.setConfigOption("model", alias);
-          } catch {
-            // Non-fatal if model fails to apply initially
-          }
+        if (input.permissionModeId && !isKimiModeId(input.permissionModeId)) {
+          throw new Error(`Unsupported permission mode: ${input.permissionModeId}`);
         }
-
-        if (input.thinkingOptionId) {
-          try {
-            await transport.setConfigOption("thinking", input.thinkingOptionId);
-          } catch {
-            // Non-fatal
-          }
-        }
-
-        if (input.permissionModeId && isKimiModeId(input.permissionModeId)) {
-          try {
-            await transport.setConfigOption("mode", input.permissionModeId);
-          } catch {
-            // Non-fatal
-          }
-        }
+        const requested = [
+          ...(input.model ? [{ id: "model" as const, value: decodeKimiModelRefId(input.model.id) }] : []),
+          ...(input.thinkingOptionId ? [{ id: "thinking" as const, value: input.thinkingOptionId }] : []),
+          ...(input.permissionModeId ? [{ id: "mode" as const, value: input.permissionModeId }] : []),
+        ];
+        const configOptions = await applyRequestedConfig(transport, sessionInfo.configOptions, requested);
+        const state = stateFromConfig(sessionInfo.sessionId, cwd, configOptions);
 
         const session = new KimiSession({
           transport,
@@ -359,21 +358,16 @@ export class KimiAdapter implements HarnessAdapter {
           cwd,
         });
 
-        const inspection = await this.inspect({ cwd, refresh: false }).catch(() => null);
-        const defaultModel = inspection?.status === "ready"
-          ? inspection.catalog.defaultModel || inspection.catalog.models[0]?.ref
-          : undefined;
-
-        const effectiveModel = input.model || defaultModel;
-        const effectiveThinkingOptionId = input.thinkingOptionId;
-        const effectivePermissionModeId = input.permissionModeId || harnessPermissionModeIdSchema.parse("default");
-
-        const state: HarnessSessionState = {
-          nativeRef: createKimiNativeSessionRef(sessionInfo.sessionId, cwd),
-          ...(effectiveModel ? { effectiveModel } : {}),
-          ...(effectiveThinkingOptionId ? { effectiveThinkingOptionId } : {}),
-          effectivePermissionModeId,
-        };
+        if (input.permissionModeId && !isKimiModeId(input.permissionModeId)) {
+          throw new Error(`Unsupported permission mode: ${input.permissionModeId}`);
+        }
+        const requested = [
+          ...(input.model ? [{ id: "model" as const, value: decodeKimiModelRefId(input.model.id) }] : []),
+          ...(input.thinkingOptionId ? [{ id: "thinking" as const, value: input.thinkingOptionId }] : []),
+          ...(input.permissionModeId ? [{ id: "mode" as const, value: input.permissionModeId }] : []),
+        ];
+        const configOptions = await applyRequestedConfig(transport, sessionInfo.configOptions, requested);
+        const state = stateFromConfig(sessionInfo.sessionId, cwd, configOptions);
 
         const session = new KimiSession({
           transport,

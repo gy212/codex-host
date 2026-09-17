@@ -213,6 +213,20 @@ export function parseAcpConfigOptions(configOptions: unknown[]): {
   return result;
 }
 
+export function readKimiEffectiveConfig(configOptions: unknown[]): {
+  modelAlias?: string;
+  thinkingOptionId?: HarnessThinkingOptionId;
+  permissionModeId?: KimiModeId;
+} {
+  const { modelOptions, thinkingOptions, modeOptions } = parseAcpConfigOptions(configOptions);
+  const thinking = harnessThinkingOptionIdSchema.safeParse(thinkingOptions?.currentValue);
+  return {
+    ...(modelOptions?.currentValue ? { modelAlias: modelOptions.currentValue } : {}),
+    ...(thinking.success ? { thinkingOptionId: thinking.data } : {}),
+    ...(isKimiModeId(modeOptions?.currentValue) ? { permissionModeId: modeOptions.currentValue } : {}),
+  };
+}
+
 export function buildModelCatalogFromAcp(
   configOptions: unknown[],
   fallbackConfig?: KimiNativeConfig,

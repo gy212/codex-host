@@ -2,7 +2,12 @@ import { mkdtemp, mkdir, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { harnessInspectionSchema, nativeSessionRefSchema } from "@codexhost/shared-contracts";
+import {
+  harnessInspectionSchema,
+  harnessPermissionModeIdSchema,
+  harnessThinkingOptionIdSchema,
+  nativeSessionRefSchema,
+} from "@codexhost/shared-contracts";
 
 import {
   KimiAdapter,
@@ -18,6 +23,7 @@ class FakeTransport implements KimiAcpTransportLike {
   authReady = true;
   initVersion = 1;
   configOptionsSet: Array<{ configId: string; value: string }> = [];
+  currentConfig = { model: "relay", thinking: "medium", mode: "default" };
   openKinds: string[] = [];
 
   setActivePromptHandler = vi.fn();
@@ -29,13 +35,17 @@ class FakeTransport implements KimiAcpTransportLike {
     this.openKinds.push(input.kind);
     return {
       sessionId: input.sessionId || "session-created",
-      configOptions: [],
+      configOptions: this.configOptions(),
     };
   });
   setConfigOption = vi.fn(async (configId: string, value: string) => {
     this.configOptionsSet.push({ configId, value });
-    return [];
+    this.currentConfig[configId as keyof typeof this.currentConfig] = value;
+    return this.configOptions();
   });
+  configOptions() {
+    return Object.entries(this.currentConfig).map(([id, currentValue]) => ({ id, currentValue }));
+  }
   prompt = vi.fn();
   cancel = vi.fn();
   close = vi.fn(async () => {
@@ -265,6 +275,8 @@ effort = "medium"
           nativeSessionId: sessionId,
         },
         cwd: tempDir,
+        thinkingOptionId: harnessThinkingOptionIdSchema.parse("high"),
+        permissionModeId: harnessPermissionModeIdSchema.parse("plan"),
       });
 
       expect(result.ok).toBe(true);
@@ -275,8 +287,34 @@ effort = "medium"
           nativeSessionId: sessionId,
           locator: { cwd: tempDir },
         });
+        expect(result.value.initialState.effectiveThinkingOptionId).toBe("high");
+        expect(result.value.initialState.effectivePermissionModeId).toBe("plan");
       }
       expect(fakeTransport.openKinds).toContain("load");
+      expect(fakeTransport.configOptionsSet).toEqual(expect.arrayContaining([
+        { configId: "thinking", value: "high" },
+        { configId: "mode", value: "plan" },
+      ]));
+    });
+
+    it("fails open when native configuration rejects a requested value", async () => {
+      fakeTransport.setConfigOption = vi.fn(async () => {
+        throw new Error("plan is unavailable");
+      });
+      const adapter = new KimiAdapter(
+        { homeDirectory: tempDir },
+        { resolveExecutable: () => "kimi", createTransport: () => fakeTransport },
+      );
+
+      const result = await adapter.open({
+        kind: "create",
+        cwd: tempDir,
+        permissionModeId: harnessPermissionModeIdSchema.parse("plan"),
+      });
+
+      expect(result.ok).toBe(false);
+      if (!result.ok) expect(result.error.message).toContain("plan is unavailable");
+      expect(fakeTransport.close).toHaveBeenCalled();
     });
 
     it("returns sessionNotFound when resuming non-existent session", async () => {

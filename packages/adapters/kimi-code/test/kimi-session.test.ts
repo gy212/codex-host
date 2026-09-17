@@ -44,7 +44,7 @@ class MockKimiTransport implements KimiAcpTransportLike {
 
   async setConfigOption(configId: string, value: string) {
     this.configOptionsSet.push({ configId, value });
-    return [];
+    return [{ id: configId, currentValue: value }];
   }
 
   promptMock = vi.fn(
