@@ -365,7 +365,14 @@ describe("KimiSession", () => {
       transport.promptMock = vi.fn(async (_text: string, handler: ActivePromptHandler) => {
         const permRequest: RequestPermissionRequest = {
           sessionId: "session-perm",
-          toolCall: { toolCallId: "call-1" },
+          toolCall: {
+            toolCallId: "call-1",
+            title: "Writing probe.txt",
+            content: [{
+              type: "content",
+              content: { type: "text", text: "Requesting approval to Writing probe.txt" },
+            }],
+          },
           options: [
             { optionId: "approve_once", name: "Approve once", kind: "allow_once" },
             { optionId: "approve_always", name: "Approve for this session", kind: "allow_always" },
@@ -400,6 +407,8 @@ describe("KimiSession", () => {
       }
 
       expect(emittedInteraction).not.toBeNull();
+      expect(emittedInteraction?.title).toBe("Writing probe.txt");
+      expect(emittedInteraction?.description).toBe("Requesting approval to Writing probe.txt");
       expect(emittedInteraction?.actions).toHaveLength(3);
       const alwaysAction = emittedInteraction?.actions.find((a) => a.id === "approve_always");
       expect(alwaysAction?.effect).toBe("allowForSession");

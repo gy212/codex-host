@@ -37,6 +37,7 @@ export function projectKimiApprovalRequest(
   const interactionId = hostInteractionIdSchema.parse(randomUUID());
   const optionIdByActionId = new Map<string, string>();
   const actions: HostApprovalAction[] = [];
+  const description = readAcpToolContentText(request.toolCall.content);
 
   const effectMap: Record<string, HostApprovalAction["effect"]> = {
     allow_once: "allowOnce",
@@ -78,10 +79,8 @@ export function projectKimiApprovalRequest(
     type: "approval",
     interactionId,
     turnId,
-    title: "Kimi Code 工具执行审批",
-    ...(typeof (request as unknown as { description?: string }).description === "string"
-      ? { description: (request as unknown as { description?: string }).description }
-      : {}),
+    title: request.toolCall.title?.trim() || "Kimi Code 工具执行审批",
+    ...(description ? { description } : {}),
     subject: { type: "nativeAction" },
     actions,
   };
