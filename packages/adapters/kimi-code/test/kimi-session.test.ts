@@ -1,0 +1,660 @@
+import { describe, expect, it, vi } from "vitest";
+import type {
+  CreateElicitationRequest,
+  CreateElicitationResponse,
+  PromptResponse,
+  RequestPermissionRequest,
+  RequestPermissionResponse,
+} from "@agentclientprotocol/sdk";
+import {
+  harnessCommandCatalogSchema,
+  hostTurnIdSchema,
+} from "@codexhost/shared-contracts";
+import type {
+  HarnessOutput,
+  HostApprovalInteraction,
+  HostQuestionInteraction,
+} from "@codexhost/harness-adapter";
+
+import {
+  KimiSession,
+} from "../src/kimi-session.js";
+import type { KimiAcpTransportLike } from "../src/kimi-adapter.js";
+import type { ActivePromptHandler, KimiTransportEvent } from "../src/acp-transport.js";
+import { encodeKimiModelRef } from "../src/models.js";
+
+class MockKimiTransport implements KimiAcpTransportLike {
+  sessionId: string | null = "session-mock-1";
+  isClosed = false;
+  activeHandler: ActivePromptHandler | null = null;
+  configOptionsSet: Array<{ configId: string; value: string }> = [];
+  cancelled = false;
+
+  setActivePromptHandler(handler: ActivePromptHandler | null): void {
+    this.activeHandler = handler;
+  }
+
+  async inspect() {
+    return { initialize: { protocolVersion: 1 } as any, authReady: true };
+  }
+
+  async openSession() {
+    return { sessionId: this.sessionId! };
+  }
+
+  async setConfigOption(configId: string, value: string) {
+    this.configOptionsSet.push({ configId, value });
+    return [];
+  }
+
+  promptMock = vi.fn(
+    async (
+      _text: string,
+      handler: ActivePromptHandler,
+    ): Promise<PromptResponse> => {
+      this.activeHandler = handler;
+      return { stopReason: "end_turn" };
+    },
+  );
+
+  async prompt(text: string, handler: ActivePromptHandler): Promise<PromptResponse> {
+    return this.promptMock(text, handler);
+  }
+
+  async cancel(): Promise<void> {
+    this.cancelled = true;
+  }
+
+  async close(): Promise<void> {
+    this.isClosed = true;
+  }
+}
+
+async function collectOutputs(outputs: AsyncIterable<HarnessOutput>, count: number): Promise<HarnessOutput[]> {
+  const items: HarnessOutput[] = [];
+  for await (const out of outputs) {
+    items.push(out);
+    if (items.length >= count) break;
+  }
+  return items;
+}
+
+describe("KimiSession", () => {
+  it("initializes state, capabilities, and nativeSessionRef", () => {
+    const transport = new MockKimiTransport();
+    const session = new KimiSession({
+      transport,
+      sessionId: "session-123",
+      cwd: "D:/project",
+      initialState: {
+        effectivePermissionModeId: "default" as any,
+      },
+    });
+
+    expect(session.harnessId).toBe("kimi-code");
+    expect(session.capabilities.configuration.selectModel).toBe(true);
+    expect(session.capabilities.history.fork).toBe(false);
+    expect(session.capabilities.history.rollbackLastTurn).toBe(false);
+    expect(session.initialState.effectivePermissionModeId).toBe("default");
+    expect(session.nativeSessionRef.nativeSessionId).toBe("session-123");
+    expect(session.nativeSessionRef.locator).toEqual({ cwd: "D:/project" });
+  });
+
+  describe("Commands", () => {
+    it("lists available commands conforming to schema", async () => {
+      const transport = new MockKimiTransport();
+      const session = new KimiSession({
+        transport,
+        sessionId: "session-123",
+        cwd: "D:/project",
+        initialState: {},
+      });
+
+      const listResult = await session.commands.list();
+      expect(listResult.ok).toBe(true);
+      if (listResult.ok) {
+        expect(harnessCommandCatalogSchema.parse(listResult.value)).toBeDefined();
+      }
+    });
+
+    it("executes command as slash prompt", async () => {
+      const transport = new MockKimiTransport();
+      let promptSent = "";
+      transport.promptMock = vi.fn(async (text: string) => {
+        promptSent = text;
+        return { stopReason: "end_turn" };
+      });
+
+      const session = new KimiSession({
+        transport,
+        sessionId: "session-123",
+        cwd: "D:/project",
+        initialState: {},
+      });
+
+      const turnId = hostTurnIdSchema.parse("turn-cmd-1");
+      const execResult = await session.commands.execute({
+        commandId: "compact" as any,
+        turnId,
+        arguments: { text: "extra" },
+      });
+
+      expect(execResult.ok).toBe(true);
+      expect(promptSent).toBe("/compact extra");
+    });
+  });
+
+  describe("Turn Execution & Streaming", () => {
+    it("runs turn emitting text and completed outcome", async () => {
+      const transport = new MockKimiTransport();
+      transport.promptMock = vi.fn(async (_text: string, handler: ActivePromptHandler) => {
+        handler.onEvent({ type: "agent.thought", text: "Thinking..." });
+        handler.onEvent({ type: "agent.text", text: "Hello, " });
+        handler.onEvent({ type: "agent.text", text: "world!" });
+        return { stopReason: "end_turn" };
+      });
+
+      const session = new KimiSession({
+        transport,
+        sessionId: "session-turn",
+        cwd: "D:/project",
+        initialState: {},
+      });
+
+      const turnId = hostTurnIdSchema.parse("turn-1");
+      const startResult = await session.execute({
+        type: "turn.start",
+        turnId,
+        input: [{ type: "text", text: "Say hello" }],
+      });
+
+      expect(startResult.ok).toBe(true);
+
+      const outputs: HarnessOutput[] = [];
+      for await (const out of session.outputs) {
+        outputs.push(out);
+        if (out.kind === "event" && out.event.type === "turn.completed") {
+          break;
+        }
+      }
+
+      const eventTypes = outputs.map((o) => (o.kind === "event" ? o.event.type : o.kind));
+      expect(eventTypes).toContain("turn.started");
+      expect(eventTypes).toContain("item.started");
+      expect(eventTypes).toContain("item.updated");
+      expect(eventTypes).toContain("item.completed");
+      expect(eventTypes).toContain("turn.completed");
+
+      const completed = outputs.find(
+        (o) => o.kind === "event" && o.event.type === "turn.completed",
+      );
+      expect(completed).toBeDefined();
+      if (completed && completed.kind === "event" && completed.event.type === "turn.completed") {
+        expect(completed.event.outcome.status).toBe("succeeded");
+        expect(completed.event.nativeTurnRef?.nativeTurnKey).toBe("turn:0");
+      }
+    });
+
+    it("rejects concurrent turn start with sessionBusy", async () => {
+      const transport = new MockKimiTransport();
+      transport.promptMock = vi.fn(
+        () => new Promise(() => {}), // hangs
+      );
+
+      const session = new KimiSession({
+        transport,
+        sessionId: "session-busy",
+        cwd: "D:/project",
+        initialState: {},
+      });
+
+      const turn1 = hostTurnIdSchema.parse("turn-busy-1");
+      const res1 = await session.execute({
+        type: "turn.start",
+        turnId: turn1,
+        input: [{ type: "text", text: "Task 1" }],
+      });
+      expect(res1.ok).toBe(true);
+
+      const turn2 = hostTurnIdSchema.parse("turn-busy-2");
+      const res2 = await session.execute({
+        type: "turn.start",
+        turnId: turn2,
+        input: [{ type: "text", text: "Task 2" }],
+      });
+      expect(res2.ok).toBe(false);
+      if (!res2.ok) {
+        expect(res2.error.code).toBe("sessionBusy");
+      }
+    });
+
+    it("accumulates tool call updates and avoids duplicate item.started", async () => {
+      const transport = new MockKimiTransport();
+      transport.promptMock = vi.fn(async (_text: string, handler: ActivePromptHandler) => {
+        // tool.call pending
+        handler.onEvent({
+          type: "tool.call",
+          toolCallId: "tool-w1",
+          name: "Write",
+          args: { path: "test.txt" },
+        });
+
+        // tool.update in_progress preview
+        handler.onEvent({
+          type: "tool.update",
+          toolCallId: "tool-w1",
+          status: "in_progress",
+          rawInput: { path: "test.txt", content: "data" },
+          content: "preview",
+        });
+
+        // tool.update completed
+        handler.onEvent({
+          type: "tool.update",
+          toolCallId: "tool-w1",
+          status: "completed",
+          rawOutput: "Wrote 4 bytes",
+        });
+
+        return { stopReason: "end_turn" };
+      });
+
+      const session = new KimiSession({
+        transport,
+        sessionId: "session-tool",
+        cwd: "D:/project",
+        initialState: {},
+      });
+
+      const turnId = hostTurnIdSchema.parse("turn-tool-1");
+      await session.execute({
+        type: "turn.start",
+        turnId,
+        input: [{ type: "text", text: "Write file" }],
+      });
+
+      const outputs: HarnessOutput[] = [];
+      for await (const out of session.outputs) {
+        outputs.push(out);
+        if (out.kind === "event" && out.event.type === "turn.completed") break;
+      }
+
+      // Count tool item.started events: must be exactly 1!
+      const toolStarted = outputs.filter(
+        (o) =>
+          o.kind === "event" &&
+          o.event.type === "item.started" &&
+          o.event.item.type === "toolExecution",
+      );
+      expect(toolStarted).toHaveLength(1);
+
+      const toolCompleted = outputs.filter(
+        (o) =>
+          o.kind === "event" &&
+          o.event.type === "item.completed" &&
+          o.event.snapshot.item.type === "toolExecution",
+      );
+      expect(toolCompleted).toHaveLength(1);
+    });
+
+    it("maps Bash tool to commandExecution item", async () => {
+      const transport = new MockKimiTransport();
+      transport.promptMock = vi.fn(async (_text: string, handler: ActivePromptHandler) => {
+        handler.onEvent({
+          type: "tool.call",
+          toolCallId: "tool-b1",
+          name: "Bash",
+          args: { command: "ls -la" },
+        });
+        handler.onEvent({
+          type: "tool.update",
+          toolCallId: "tool-b1",
+          status: "completed",
+          rawInput: { command: "ls -la" },
+          rawOutput: "total 0",
+        });
+        return { stopReason: "end_turn" };
+      });
+
+      const session = new KimiSession({
+        transport,
+        sessionId: "session-bash",
+        cwd: "D:/project",
+        initialState: {},
+      });
+
+      const turnId = hostTurnIdSchema.parse("turn-bash-1");
+      await session.execute({
+        type: "turn.start",
+        turnId,
+        input: [{ type: "text", text: "List files" }],
+      });
+
+      const outputs: HarnessOutput[] = [];
+      for await (const out of session.outputs) {
+        outputs.push(out);
+        if (out.kind === "event" && out.event.type === "turn.completed") break;
+      }
+
+      const cmdStarted = outputs.find(
+        (o) =>
+          o.kind === "event" &&
+          o.event.type === "item.started" &&
+          o.event.item.type === "commandExecution",
+      );
+      expect(cmdStarted).toBeDefined();
+      if (cmdStarted && cmdStarted.kind === "event" && cmdStarted.event.type === "item.started" && cmdStarted.event.item.type === "commandExecution") {
+        expect(cmdStarted.event.item.command).toBe("ls -la");
+      }
+    });
+  });
+
+  describe("Interactions", () => {
+    it("bridges Approval interaction: allow_always maps to allowForSession, validates response", async () => {
+      const transport = new MockKimiTransport();
+      let permissionResolvedWith: RequestPermissionResponse | null = null;
+
+      transport.promptMock = vi.fn(async (_text: string, handler: ActivePromptHandler) => {
+        const permRequest: RequestPermissionRequest = {
+          sessionId: "session-perm",
+          toolCall: { toolCallId: "call-1" },
+          options: [
+            { optionId: "approve_once", name: "Approve once", kind: "allow_once" },
+            { optionId: "approve_always", name: "Approve for this session", kind: "allow_always" },
+            { optionId: "reject", name: "Reject", kind: "reject_once" },
+          ],
+        };
+        permissionResolvedWith = await handler.onPermission(permRequest);
+        return { stopReason: "end_turn" };
+      });
+
+      const session = new KimiSession({
+        transport,
+        sessionId: "session-perm",
+        cwd: "D:/project",
+        initialState: {},
+      });
+
+      const turnId = hostTurnIdSchema.parse("turn-perm-1");
+      await session.execute({
+        type: "turn.start",
+        turnId,
+        input: [{ type: "text", text: "Do action" }],
+      });
+
+      // Read until interaction is emitted
+      let emittedInteraction: HostApprovalInteraction | null = null;
+      for await (const out of session.outputs) {
+        if (out.kind === "interaction" && out.interaction.type === "approval") {
+          emittedInteraction = out.interaction;
+          break;
+        }
+      }
+
+      expect(emittedInteraction).not.toBeNull();
+      expect(emittedInteraction?.actions).toHaveLength(3);
+      const alwaysAction = emittedInteraction?.actions.find((a) => a.id === "approve_always");
+      expect(alwaysAction?.effect).toBe("allowForSession");
+
+      // Respond to interaction
+      const respondResult = await session.execute({
+        type: "interaction.respond",
+        interactionId: emittedInteraction!.interactionId,
+        response: {
+          type: "approval",
+          actionId: "approve_always",
+        },
+      });
+
+      expect(respondResult.ok).toBe(true);
+      expect(permissionResolvedWith).toEqual({
+        outcome: { outcome: "selected", optionId: "approve_always" },
+      });
+    });
+
+    it("bridges Elicitation (Question) interaction with single and multi choice", async () => {
+      const transport = new MockKimiTransport();
+      let elicitationResolvedWith: CreateElicitationResponse | null = null;
+
+      transport.promptMock = vi.fn(async (_text: string, handler: ActivePromptHandler) => {
+        const elicitationReq: CreateElicitationRequest = {
+          sessionId: "session-elic",
+          mode: "form",
+          message: "Questions",
+          requestedSchema: {
+            type: "object",
+            properties: {
+              q0: {
+                type: "string",
+                title: "Color",
+                oneOf: [{ const: "Red", title: "Red" }, { const: "Blue", title: "Blue" }],
+              },
+              q1: {
+                type: "array",
+                title: "Fruits",
+                items: { anyOf: [{ const: "Apple" }, { const: "Pear" }] },
+              },
+            },
+            required: ["q0", "q1"],
+          },
+        };
+        elicitationResolvedWith = await handler.onElicitation(elicitationReq);
+        return { stopReason: "end_turn" };
+      });
+
+      const session = new KimiSession({
+        transport,
+        sessionId: "session-elic",
+        cwd: "D:/project",
+        initialState: {},
+      });
+
+      const turnId = hostTurnIdSchema.parse("turn-elic-1");
+      await session.execute({
+        type: "turn.start",
+        turnId,
+        input: [{ type: "text", text: "Ask questions" }],
+      });
+
+      let emittedQuestion: HostQuestionInteraction | null = null;
+      for await (const out of session.outputs) {
+        if (out.kind === "interaction" && out.interaction.type === "question") {
+          emittedQuestion = out.interaction;
+          break;
+        }
+      }
+
+      expect(emittedQuestion).not.toBeNull();
+      expect(emittedQuestion?.questions).toHaveLength(2);
+      const q0 = emittedQuestion!.questions[0]!;
+      const q1 = emittedQuestion!.questions[1]!;
+      if ("options" in q0) {
+        expect(q0.multiple).toBe(false);
+      }
+      if ("options" in q1) {
+        expect(q1.multiple).toBe(true);
+      }
+
+      // Respond
+      const respondResult = await session.execute({
+        type: "interaction.respond",
+        interactionId: emittedQuestion!.interactionId,
+        response: {
+          type: "question",
+          answers: {
+            q0: ["Red"],
+            q1: ["Apple", "Pear"],
+          },
+        },
+      });
+
+      expect(respondResult.ok).toBe(true);
+      expect(elicitationResolvedWith).toEqual({
+        action: "accept",
+        content: {
+          q0: "Red",
+          q1: ["Apple", "Pear"],
+        },
+      });
+    });
+
+    it("rejects interaction response with mismatched type or action", async () => {
+      const transport = new MockKimiTransport();
+      transport.promptMock = vi.fn(async (_text: string, handler: ActivePromptHandler) => {
+        await handler.onPermission({
+          sessionId: "s",
+          toolCall: { toolCallId: "call-1" },
+          options: [{ optionId: "allow_once", name: "Allow Once", kind: "allow_once" }],
+        });
+        return { stopReason: "end_turn" };
+      });
+
+      const session = new KimiSession({
+        transport,
+        sessionId: "s",
+        cwd: "D:/project",
+        initialState: {},
+      });
+
+      const turnId = hostTurnIdSchema.parse("t-mismatch");
+      await session.execute({
+        type: "turn.start",
+        turnId,
+        input: [{ type: "text", text: "run" }],
+      });
+
+      let interactionId: any;
+      for await (const out of session.outputs) {
+        if (out.kind === "interaction") {
+          interactionId = out.interaction.interactionId;
+          break;
+        }
+      }
+
+      // Wrong type: sending question response to approval interaction
+      const res = await session.execute({
+        type: "interaction.respond",
+        interactionId,
+        response: {
+          type: "question",
+          answers: {},
+        },
+      });
+
+      expect(res.ok).toBe(false);
+      if (!res.ok) {
+        expect(res.error.code).toBe("invalidRequest");
+      }
+    });
+  });
+
+  describe("Cancellation", () => {
+    it("cancels active turn and emits turn.completed with cancelled outcome", async () => {
+      const transport = new MockKimiTransport();
+      let cancelCalled = false;
+      transport.promptMock = vi.fn(async () => {
+        // Simulate waiting for prompt
+        await new Promise((r) => setTimeout(r, 50));
+        return { stopReason: "cancelled" };
+      });
+      transport.cancel = vi.fn(async () => {
+        cancelCalled = true;
+      });
+
+      const session = new KimiSession({
+        transport,
+        sessionId: "s-cancel",
+        cwd: "D:/project",
+        initialState: {},
+      });
+
+      const turnId = hostTurnIdSchema.parse("t-cancel");
+      await session.execute({
+        type: "turn.start",
+        turnId,
+        input: [{ type: "text", text: "Long task" }],
+      });
+
+      const cancelResult = await session.execute({
+        type: "turn.cancel",
+        turnId,
+      });
+
+      expect(cancelResult.ok).toBe(true);
+      expect(cancelCalled).toBe(true);
+
+      const outputs: HarnessOutput[] = [];
+      for await (const out of session.outputs) {
+        outputs.push(out);
+        if (out.kind === "event" && out.event.type === "turn.completed") break;
+      }
+
+      const completed = outputs.find(
+        (o) => o.kind === "event" && o.event.type === "turn.completed",
+      );
+      expect(completed).toBeDefined();
+      if (completed && completed.kind === "event" && completed.event.type === "turn.completed") {
+        expect(completed.event.outcome.status).toBe("cancelled");
+      }
+    });
+  });
+
+  describe("Configuration Commands", () => {
+    it("handles model.select, thinking.select, and permissionMode.select", async () => {
+      const transport = new MockKimiTransport();
+      const session = new KimiSession({
+        transport,
+        sessionId: "s-cfg",
+        cwd: "D:/project",
+        initialState: {},
+      });
+
+      const modelRes = await session.execute({
+        type: "model.select",
+        model: encodeKimiModelRef("kimi-k2"),
+      });
+      expect(modelRes.ok).toBe(true);
+      expect(transport.configOptionsSet).toContainEqual({ configId: "model", value: "kimi-k2" });
+
+      const thinkingRes = await session.execute({
+        type: "thinking.select",
+        thinkingOptionId: "high" as any,
+      });
+      expect(thinkingRes.ok).toBe(true);
+      expect(transport.configOptionsSet).toContainEqual({ configId: "thinking", value: "high" });
+
+      const modeRes = await session.execute({
+        type: "permissionMode.select",
+        permissionModeId: "plan" as any,
+      });
+      expect(modeRes.ok).toBe(true);
+      expect(transport.configOptionsSet).toContainEqual({ configId: "mode", value: "plan" });
+    });
+  });
+
+  describe("Close", () => {
+    it("closes transport, cancels pending interactions, and ends outputs", async () => {
+      const transport = new MockKimiTransport();
+      const session = new KimiSession({
+        transport,
+        sessionId: "s-close",
+        cwd: "D:/project",
+        initialState: {},
+      });
+
+      await session.close();
+      expect(transport.isClosed).toBe(true);
+
+      // Subsequent execute should fail with invalidState
+      const res = await session.execute({
+        type: "turn.start",
+        turnId: hostTurnIdSchema.parse("t-after-close"),
+        input: [{ type: "text", text: "test" }],
+      });
+      expect(res.ok).toBe(false);
+      if (!res.ok) {
+        expect(res.error.code).toBe("invalidState");
+      }
+    });
+  });
+});

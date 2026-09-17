@@ -1,0 +1,742 @@
+[
+  {
+    "probe": "live",
+    "at": "2026-09-17T12:45:14.312Z",
+    "direction": "agent",
+    "message": {
+      "jsonrpc": "2.0",
+      "method": "session/update",
+      "params": {
+        "sessionId": "session_05b6a4d7-93f9-4a81-be13-f443bc09abc4",
+        "update": {
+          "sessionUpdate": "tool_call",
+          "toolCallId": "0:toolu_bdrk_01GoLKHzUVWeMPSjrf9KHhpW",
+          "title": "Write",
+          "kind": "edit",
+          "status": "pending",
+          "content": [
+            {
+              "type": "content",
+              "content": {
+                "type": "text",
+                "text": ""
+              }
+            }
+          ]
+        }
+      }
+    }
+  },
+  {
+    "probe": "live",
+    "at": "2026-09-17T12:45:15.793Z",
+    "direction": "agent",
+    "message": {
+      "jsonrpc": "2.0",
+      "id": 0,
+      "method": "session/request_permission",
+      "params": {
+        "sessionId": "session_05b6a4d7-93f9-4a81-be13-f443bc09abc4",
+        "options": [
+          {
+            "optionId": "approve_once",
+            "name": "Approve once",
+            "kind": "allow_once"
+          },
+          {
+            "optionId": "approve_always",
+            "name": "Approve for this session",
+            "kind": "allow_always"
+          },
+          {
+            "optionId": "reject",
+            "name": "Reject",
+            "kind": "reject_once"
+          }
+        ],
+        "toolCall": {
+          "toolCallId": "0:toolu_bdrk_01GoLKHzUVWeMPSjrf9KHhpW",
+          "title": "Write",
+          "content": [
+            {
+              "type": "content",
+              "content": {
+                "type": "text",
+                "text": "Requesting approval to Writing probe.txt"
+              }
+            }
+          ]
+        }
+      }
+    }
+  },
+  {
+    "probe": "live",
+    "at": "2026-09-17T12:45:15.800Z",
+    "direction": "agent",
+    "message": {
+      "jsonrpc": "2.0",
+      "method": "session/update",
+      "params": {
+        "sessionId": "session_05b6a4d7-93f9-4a81-be13-f443bc09abc4",
+        "update": {
+          "sessionUpdate": "tool_call_update",
+          "toolCallId": "0:toolu_bdrk_01GoLKHzUVWeMPSjrf9KHhpW",
+          "title": "Writing probe.txt",
+          "kind": "edit",
+          "status": "in_progress",
+          "rawInput": {
+            "path": "probe.txt",
+            "content": "KIMI_PROBE_OK\n"
+          },
+          "locations": [
+            {
+              "path": "D:/DevTools/probes/kimi-sdk-20260917/acp/workspace/probe.txt"
+            }
+          ],
+          "content": [
+            {
+              "type": "content",
+              "content": {
+                "type": "text",
+                "text": "{\"path\":\"probe.txt\",\"content\":\"KIMI_PROBE_OK\\n\"}"
+              }
+            }
+          ]
+        }
+      }
+    }
+  },
+  {
+    "probe": "live",
+    "at": "2026-09-17T12:45:15.817Z",
+    "direction": "agent",
+    "message": {
+      "jsonrpc": "2.0",
+      "method": "session/update",
+      "params": {
+        "sessionId": "session_05b6a4d7-93f9-4a81-be13-f443bc09abc4",
+        "update": {
+          "sessionUpdate": "tool_call_update",
+          "toolCallId": "0:toolu_bdrk_01GoLKHzUVWeMPSjrf9KHhpW",
+          "status": "completed",
+          "content": [
+            {
+              "type": "content",
+              "content": {
+                "type": "text",
+                "text": "Wrote 14 bytes to probe.txt"
+              }
+            }
+          ],
+          "rawOutput": "Wrote 14 bytes to probe.txt",
+          "locations": [
+            {
+              "path": "D:/DevTools/probes/kimi-sdk-20260917/acp/workspace/probe.txt"
+            }
+          ]
+        }
+      }
+    }
+  },
+  {
+    "probe": "live",
+    "at": "2026-09-17T12:45:19.230Z",
+    "direction": "agent",
+    "message": {
+      "jsonrpc": "2.0",
+      "method": "session/update",
+      "params": {
+        "sessionId": "session_05b6a4d7-93f9-4a81-be13-f443bc09abc4",
+        "update": {
+          "sessionUpdate": "tool_call",
+          "toolCallId": "0:toolu_bdrk_01ByNNKszfeu4DM2TBoRBQF2",
+          "title": "Bash",
+          "kind": "execute",
+          "status": "pending",
+          "content": [
+            {
+              "type": "content",
+              "content": {
+                "type": "text",
+                "text": ""
+              }
+            }
+          ]
+        }
+      }
+    }
+  },
+  {
+    "probe": "live",
+    "at": "2026-09-17T12:45:20.258Z",
+    "direction": "agent",
+    "message": {
+      "jsonrpc": "2.0",
+      "id": 1,
+      "method": "session/request_permission",
+      "params": {
+        "sessionId": "session_05b6a4d7-93f9-4a81-be13-f443bc09abc4",
+        "options": [
+          {
+            "optionId": "approve_once",
+            "name": "Approve once",
+            "kind": "allow_once"
+          },
+          {
+            "optionId": "approve_always",
+            "name": "Approve for this session",
+            "kind": "allow_always"
+          },
+          {
+            "optionId": "reject",
+            "name": "Reject",
+            "kind": "reject_once"
+          }
+        ],
+        "toolCall": {
+          "toolCallId": "0:toolu_bdrk_01ByNNKszfeu4DM2TBoRBQF2",
+          "title": "Bash",
+          "content": [
+            {
+              "type": "content",
+              "content": {
+                "type": "text",
+                "text": "Requesting approval to Running: cat probe.txt"
+              }
+            }
+          ]
+        }
+      }
+    }
+  },
+  {
+    "probe": "live",
+    "at": "2026-09-17T12:45:20.260Z",
+    "direction": "agent",
+    "message": {
+      "jsonrpc": "2.0",
+      "method": "session/update",
+      "params": {
+        "sessionId": "session_05b6a4d7-93f9-4a81-be13-f443bc09abc4",
+        "update": {
+          "sessionUpdate": "tool_call_update",
+          "toolCallId": "0:toolu_bdrk_01ByNNKszfeu4DM2TBoRBQF2",
+          "title": "Running: cat probe.txt",
+          "kind": "execute",
+          "status": "in_progress",
+          "rawInput": {
+            "command": "cat probe.txt"
+          },
+          "content": [
+            {
+              "type": "content",
+              "content": {
+                "type": "text",
+                "text": "{\"command\":\"cat probe.txt\"}"
+              }
+            }
+          ]
+        }
+      }
+    }
+  },
+  {
+    "probe": "live",
+    "at": "2026-09-17T12:45:21.186Z",
+    "direction": "agent",
+    "message": {
+      "jsonrpc": "2.0",
+      "method": "session/update",
+      "params": {
+        "sessionId": "session_05b6a4d7-93f9-4a81-be13-f443bc09abc4",
+        "update": {
+          "sessionUpdate": "tool_call_update",
+          "toolCallId": "0:toolu_bdrk_01ByNNKszfeu4DM2TBoRBQF2",
+          "status": "completed",
+          "content": [
+            {
+              "type": "content",
+              "content": {
+                "type": "text",
+                "text": "KIMI_PROBE_OK\n"
+              }
+            }
+          ],
+          "rawOutput": "KIMI_PROBE_OK\n"
+        }
+      }
+    }
+  },
+  {
+    "probe": "live",
+    "at": "2026-09-17T12:45:25.279Z",
+    "direction": "agent",
+    "message": {
+      "jsonrpc": "2.0",
+      "method": "session/update",
+      "params": {
+        "sessionId": "session_05b6a4d7-93f9-4a81-be13-f443bc09abc4",
+        "update": {
+          "sessionUpdate": "usage_update",
+          "used": 42068,
+          "size": 200000
+        }
+      }
+    }
+  },
+  {
+    "probe": "live",
+    "at": "2026-09-17T12:45:26.424Z",
+    "direction": "agent",
+    "message": {
+      "jsonrpc": "2.0",
+      "method": "session/update",
+      "params": {
+        "sessionId": "session_05b6a4d7-93f9-4a81-be13-f443bc09abc4",
+        "update": {
+          "sessionUpdate": "tool_call",
+          "toolCallId": "1:toolu_bdrk_01GoLKHzUVWeMPSjrf9KHhpW",
+          "title": "Write",
+          "kind": "edit",
+          "status": "in_progress",
+          "rawInput": {
+            "path": "probe.txt",
+            "content": "KIMI_PROBE_OK\n"
+          },
+          "content": [
+            {
+              "type": "content",
+              "content": {
+                "type": "text",
+                "text": "{\"path\":\"probe.txt\",\"content\":\"KIMI_PROBE_OK\\n\"}"
+              }
+            }
+          ]
+        }
+      }
+    }
+  },
+  {
+    "probe": "live",
+    "at": "2026-09-17T12:45:26.424Z",
+    "direction": "agent",
+    "message": {
+      "jsonrpc": "2.0",
+      "method": "session/update",
+      "params": {
+        "sessionId": "session_05b6a4d7-93f9-4a81-be13-f443bc09abc4",
+        "update": {
+          "sessionUpdate": "tool_call_update",
+          "toolCallId": "1:toolu_bdrk_01GoLKHzUVWeMPSjrf9KHhpW",
+          "status": "completed",
+          "content": [
+            {
+              "type": "content",
+              "content": {
+                "type": "text",
+                "text": "Wrote 14 bytes to probe.txt"
+              }
+            }
+          ]
+        }
+      }
+    }
+  },
+  {
+    "probe": "live",
+    "at": "2026-09-17T12:45:26.424Z",
+    "direction": "agent",
+    "message": {
+      "jsonrpc": "2.0",
+      "method": "session/update",
+      "params": {
+        "sessionId": "session_05b6a4d7-93f9-4a81-be13-f443bc09abc4",
+        "update": {
+          "sessionUpdate": "tool_call",
+          "toolCallId": "2:toolu_bdrk_01ByNNKszfeu4DM2TBoRBQF2",
+          "title": "Bash",
+          "kind": "execute",
+          "status": "in_progress",
+          "rawInput": {
+            "command": "cat probe.txt"
+          },
+          "content": [
+            {
+              "type": "content",
+              "content": {
+                "type": "text",
+                "text": "{\"command\":\"cat probe.txt\"}"
+              }
+            }
+          ]
+        }
+      }
+    }
+  },
+  {
+    "probe": "live",
+    "at": "2026-09-17T12:45:26.424Z",
+    "direction": "agent",
+    "message": {
+      "jsonrpc": "2.0",
+      "method": "session/update",
+      "params": {
+        "sessionId": "session_05b6a4d7-93f9-4a81-be13-f443bc09abc4",
+        "update": {
+          "sessionUpdate": "tool_call_update",
+          "toolCallId": "2:toolu_bdrk_01ByNNKszfeu4DM2TBoRBQF2",
+          "status": "completed",
+          "content": [
+            {
+              "type": "content",
+              "content": {
+                "type": "text",
+                "text": "KIMI_PROBE_OK\n"
+              }
+            }
+          ]
+        }
+      }
+    }
+  },
+  {
+    "probe": "live",
+    "at": "2026-09-17T12:45:33.294Z",
+    "direction": "agent",
+    "message": {
+      "jsonrpc": "2.0",
+      "method": "session/update",
+      "params": {
+        "sessionId": "session_05b6a4d7-93f9-4a81-be13-f443bc09abc4",
+        "update": {
+          "sessionUpdate": "usage_update",
+          "used": 42347,
+          "size": 200000
+        }
+      }
+    }
+  },
+  {
+    "probe": "features",
+    "at": "2026-09-17T12:49:03.008Z",
+    "direction": "agent",
+    "message": {
+      "jsonrpc": "2.0",
+      "method": "session/update",
+      "params": {
+        "sessionId": "session_b6d26031-1e69-472c-b466-eb49d518df0b",
+        "update": {
+          "sessionUpdate": "usage_update",
+          "used": 140,
+          "size": 200000
+        }
+      }
+    }
+  },
+  {
+    "probe": "features",
+    "at": "2026-09-17T12:49:08.717Z",
+    "direction": "agent",
+    "message": {
+      "jsonrpc": "2.0",
+      "method": "session/update",
+      "params": {
+        "sessionId": "session_b6d26031-1e69-472c-b466-eb49d518df0b",
+        "update": {
+          "sessionUpdate": "tool_call",
+          "toolCallId": "1:toolu_bdrk_0171bLLXfRRepdFdHnqeJSdz",
+          "title": "AskUserQuestion",
+          "kind": "other",
+          "status": "pending",
+          "content": [
+            {
+              "type": "content",
+              "content": {
+                "type": "text",
+                "text": ""
+              }
+            }
+          ]
+        }
+      }
+    }
+  },
+  {
+    "probe": "features",
+    "at": "2026-09-17T12:49:09.506Z",
+    "direction": "agent",
+    "message": {
+      "jsonrpc": "2.0",
+      "method": "session/update",
+      "params": {
+        "sessionId": "session_b6d26031-1e69-472c-b466-eb49d518df0b",
+        "update": {
+          "sessionUpdate": "tool_call_update",
+          "toolCallId": "1:toolu_bdrk_0171bLLXfRRepdFdHnqeJSdz",
+          "title": "Asking user questions",
+          "kind": "other",
+          "status": "in_progress",
+          "rawInput": {
+            "questions": [
+              {
+                "question": "Choose a color?",
+                "options": [
+                  {
+                    "label": "Red"
+                  },
+                  {
+                    "label": "Blue"
+                  }
+                ]
+              },
+              {
+                "question": "Choose fruits?",
+                "multi_select": true,
+                "options": [
+                  {
+                    "label": "Apple"
+                  },
+                  {
+                    "label": "Pear"
+                  },
+                  {
+                    "label": "Orange"
+                  }
+                ]
+              }
+            ]
+          },
+          "content": [
+            {
+              "type": "content",
+              "content": {
+                "type": "text",
+                "text": "{\"questions\":[{\"question\":\"Choose a color?\",\"options\":[{\"label\":\"Red\"},{\"label\":\"Blue\"}]},{\"question\":\"Choose fruits?\",\"multi_select\":true,\"options\":[{\"label\":\"Apple\"},{\"label\":\"Pear\"},{\"label\":\"Orange\"}]}]}"
+              }
+            }
+          ]
+        }
+      }
+    }
+  },
+  {
+    "probe": "features",
+    "at": "2026-09-17T12:49:09.508Z",
+    "direction": "agent",
+    "message": {
+      "jsonrpc": "2.0",
+      "id": 0,
+      "method": "elicitation/create",
+      "params": {
+        "sessionId": "session_b6d26031-1e69-472c-b466-eb49d518df0b",
+        "toolCallId": "1:toolu_bdrk_0171bLLXfRRepdFdHnqeJSdz",
+        "mode": "form",
+        "message": "Choose a color?\nChoose fruits?",
+        "requestedSchema": {
+          "type": "object",
+          "properties": {
+            "q0": {
+              "type": "string",
+              "title": "Choose a color?",
+              "oneOf": [
+                {
+                  "const": "Red",
+                  "title": "Red"
+                },
+                {
+                  "const": "Blue",
+                  "title": "Blue"
+                }
+              ]
+            },
+            "q1": {
+              "type": "array",
+              "title": "Choose fruits?",
+              "minItems": 1,
+              "items": {
+                "anyOf": [
+                  {
+                    "const": "Apple",
+                    "title": "Apple"
+                  },
+                  {
+                    "const": "Pear",
+                    "title": "Pear"
+                  },
+                  {
+                    "const": "Orange",
+                    "title": "Orange"
+                  }
+                ]
+              }
+            }
+          },
+          "required": [
+            "q0",
+            "q1"
+          ]
+        }
+      }
+    }
+  },
+  {
+    "probe": "features",
+    "at": "2026-09-17T12:49:09.510Z",
+    "direction": "agent",
+    "message": {
+      "jsonrpc": "2.0",
+      "method": "session/update",
+      "params": {
+        "sessionId": "session_b6d26031-1e69-472c-b466-eb49d518df0b",
+        "update": {
+          "sessionUpdate": "tool_call_update",
+          "toolCallId": "1:toolu_bdrk_0171bLLXfRRepdFdHnqeJSdz",
+          "status": "completed",
+          "content": [
+            {
+              "type": "content",
+              "content": {
+                "type": "text",
+                "text": "{\"answers\":{\"Choose a color?\":\"Red\",\"Choose fruits?\":\"Apple, Pear\"}}"
+              }
+            }
+          ],
+          "rawOutput": "{\"answers\":{\"Choose a color?\":\"Red\",\"Choose fruits?\":\"Apple, Pear\"}}"
+        }
+      }
+    }
+  },
+  {
+    "probe": "features",
+    "at": "2026-09-17T12:49:16.095Z",
+    "direction": "agent",
+    "message": {
+      "jsonrpc": "2.0",
+      "method": "session/update",
+      "params": {
+        "sessionId": "session_b6d26031-1e69-472c-b466-eb49d518df0b",
+        "update": {
+          "sessionUpdate": "usage_update",
+          "used": 42216,
+          "size": 200000
+        }
+      }
+    }
+  },
+  {
+    "probe": "features",
+    "at": "2026-09-17T12:49:16.446Z",
+    "direction": "agent",
+    "message": {
+      "jsonrpc": "2.0",
+      "method": "session/update",
+      "params": {
+        "sessionId": "session_2723aae3-a108-4338-9763-b51b3c7d6206",
+        "update": {
+          "sessionUpdate": "tool_call",
+          "toolCallId": "1:toolu_bdrk_01GoLKHzUVWeMPSjrf9KHhpW",
+          "title": "Write",
+          "kind": "edit",
+          "status": "in_progress",
+          "rawInput": {
+            "path": "probe.txt",
+            "content": "KIMI_PROBE_OK\n"
+          },
+          "content": [
+            {
+              "type": "content",
+              "content": {
+                "type": "text",
+                "text": "{\"path\":\"probe.txt\",\"content\":\"KIMI_PROBE_OK\\n\"}"
+              }
+            }
+          ]
+        }
+      }
+    }
+  },
+  {
+    "probe": "features",
+    "at": "2026-09-17T12:49:16.446Z",
+    "direction": "agent",
+    "message": {
+      "jsonrpc": "2.0",
+      "method": "session/update",
+      "params": {
+        "sessionId": "session_2723aae3-a108-4338-9763-b51b3c7d6206",
+        "update": {
+          "sessionUpdate": "tool_call_update",
+          "toolCallId": "1:toolu_bdrk_01GoLKHzUVWeMPSjrf9KHhpW",
+          "status": "completed",
+          "content": [
+            {
+              "type": "content",
+              "content": {
+                "type": "text",
+                "text": "Wrote 14 bytes to probe.txt"
+              }
+            }
+          ]
+        }
+      }
+    }
+  },
+  {
+    "probe": "features",
+    "at": "2026-09-17T12:49:16.446Z",
+    "direction": "agent",
+    "message": {
+      "jsonrpc": "2.0",
+      "method": "session/update",
+      "params": {
+        "sessionId": "session_2723aae3-a108-4338-9763-b51b3c7d6206",
+        "update": {
+          "sessionUpdate": "tool_call",
+          "toolCallId": "2:toolu_bdrk_01ByNNKszfeu4DM2TBoRBQF2",
+          "title": "Bash",
+          "kind": "execute",
+          "status": "in_progress",
+          "rawInput": {
+            "command": "cat probe.txt"
+          },
+          "content": [
+            {
+              "type": "content",
+              "content": {
+                "type": "text",
+                "text": "{\"command\":\"cat probe.txt\"}"
+              }
+            }
+          ]
+        }
+      }
+    }
+  },
+  {
+    "probe": "features",
+    "at": "2026-09-17T12:49:16.446Z",
+    "direction": "agent",
+    "message": {
+      "jsonrpc": "2.0",
+      "method": "session/update",
+      "params": {
+        "sessionId": "session_2723aae3-a108-4338-9763-b51b3c7d6206",
+        "update": {
+          "sessionUpdate": "tool_call_update",
+          "toolCallId": "2:toolu_bdrk_01ByNNKszfeu4DM2TBoRBQF2",
+          "status": "completed",
+          "content": [
+            {
+              "type": "content",
+              "content": {
+                "type": "text",
+                "text": "KIMI_PROBE_OK\n"
+              }
+            }
+          ]
+        }
+      }
+    }
+  }
+]

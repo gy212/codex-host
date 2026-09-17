@@ -29,6 +29,7 @@ const HARNESS_INSTALL_URLS: Readonly<Record<ExternalRendererAgent, string>> = Ob
   hermes: "https://hermes-agent.nousresearch.com/docs",
   qoder: "https://docs.qoder.com/",
   "qoder-cn": "https://docs.qoder.cn/",
+  "kimi-code": "https://moonshotai.github.io/kimi-code/en/reference/kimi-acp.html",
 });
 
 export interface RendererConnectionAgentSnapshot {
