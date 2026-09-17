@@ -91,6 +91,20 @@ export interface KimiAcpTransportOptions {
   onFault?: (error: KimiTransportError) => void;
 }
 
+export function projectKimiTextUpdate(
+  update: Record<string, unknown>,
+): Extract<KimiTransportEvent, { type: "agent.text" | "agent.thought" }> | null {
+  const content = update.content;
+  const text = content && typeof content === "object" && (content as Record<string, unknown>).type === "text"
+    && typeof (content as Record<string, unknown>).text === "string"
+    ? (content as Record<string, unknown>).text as string
+    : "";
+
+  if (update.sessionUpdate === "agent_message_chunk") return { type: "agent.text", text };
+  if (update.sessionUpdate === "agent_thought_chunk") return { type: "agent.thought", text };
+  return null;
+}
+
 export class KimiAcpTransport {
   #options: KimiAcpTransportOptions;
   #child: ChildProcessWithoutNullStreams | null = null;
@@ -450,13 +464,10 @@ export class KimiAcpTransport {
     if (!update) return;
 
     const sessionUpdate = typeof update.sessionUpdate === "string" ? update.sessionUpdate : undefined;
+    const textEvent = projectKimiTextUpdate(update);
 
-    if (sessionUpdate === "agent_message_chunk") {
-      const text = typeof update.text === "string" ? update.text : "";
-      this.#activePrompt?.onEvent({ type: "agent.text", text });
-    } else if (sessionUpdate === "agent_thought_chunk") {
-      const text = typeof update.text === "string" ? update.text : "";
-      this.#activePrompt?.onEvent({ type: "agent.thought", text });
+    if (textEvent) {
+      this.#activePrompt?.onEvent(textEvent);
     } else if (sessionUpdate === "tool_call") {
       const toolCallId = typeof update.toolCallId === "string" ? update.toolCallId : "";
       const name = typeof update.name === "string" ? update.name : "Tool";
