@@ -2,7 +2,7 @@ import { mkdtemp, mkdir, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { harnessInspectionSchema } from "@codexhost/shared-contracts";
+import { harnessInspectionSchema, nativeSessionRefSchema } from "@codexhost/shared-contracts";
 
 import {
   KimiAdapter,
@@ -215,6 +215,12 @@ effort = "medium"
       if (result.ok) {
         const session = result.value;
         expect(session.harnessId).toBe("kimi-code");
+        expect(nativeSessionRefSchema.parse(session.initialState.nativeRef)).toEqual({
+          formatVersion: 1,
+          harnessId: "kimi-code",
+          nativeSessionId: "session-created",
+          locator: { cwd: tempDir },
+        });
         expect(session.initialState.effectiveModel?.id).toBe(encodeKimiModelRef("relay").id);
         expect(session.initialState.effectiveThinkingOptionId).toBe("high");
         expect(session.initialState.effectivePermissionModeId).toBe("yolo");
@@ -262,6 +268,14 @@ effort = "medium"
       });
 
       expect(result.ok).toBe(true);
+      if (result.ok) {
+        expect(nativeSessionRefSchema.parse(result.value.initialState.nativeRef)).toEqual({
+          formatVersion: 1,
+          harnessId: "kimi-code",
+          nativeSessionId: sessionId,
+          locator: { cwd: tempDir },
+        });
+      }
       expect(fakeTransport.openKinds).toContain("load");
     });
 

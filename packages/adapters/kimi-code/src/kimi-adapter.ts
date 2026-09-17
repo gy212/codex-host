@@ -32,6 +32,7 @@ import {
 } from "./acp-transport.js";
 import { resolveKimiExecutable } from "./command.js";
 import {
+  createKimiNativeSessionRef,
   getKimiCodeHome,
   locateKimiSession,
 } from "./history.js";
@@ -287,6 +288,7 @@ export class KimiAdapter implements HarnessAdapter {
         const effectivePermissionModeId = input.permissionModeId || harnessPermissionModeIdSchema.parse("default");
 
         const state: HarnessSessionState = {
+          nativeRef: createKimiNativeSessionRef(sessionInfo.sessionId, cwd),
           ...(effectiveModel ? { effectiveModel } : {}),
           ...(effectiveThinkingOptionId ? { effectiveThinkingOptionId } : {}),
           effectivePermissionModeId,
@@ -367,6 +369,7 @@ export class KimiAdapter implements HarnessAdapter {
         const effectivePermissionModeId = input.permissionModeId || harnessPermissionModeIdSchema.parse("default");
 
         const state: HarnessSessionState = {
+          nativeRef: createKimiNativeSessionRef(sessionInfo.sessionId, cwd),
           ...(effectiveModel ? { effectiveModel } : {}),
           ...(effectiveThinkingOptionId ? { effectiveThinkingOptionId } : {}),
           effectivePermissionModeId,
