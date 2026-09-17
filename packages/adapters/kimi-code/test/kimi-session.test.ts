@@ -1,3 +1,6 @@
+import { mkdtemp, mkdir, rm, writeFile } from "node:fs/promises";
+import os from "node:os";
+import path from "node:path";
 import { describe, expect, it, vi } from "vitest";
 import type {
   CreateElicitationRequest,
@@ -145,6 +148,9 @@ describe("KimiSession", () => {
       });
 
       expect(execResult.ok).toBe(true);
+      for await (const output of session.outputs) {
+        if (output.kind === "event" && output.event.type === "turn.completed") break;
+      }
       expect(promptSent).toBe("/compact extra");
     });
   });
@@ -196,8 +202,65 @@ describe("KimiSession", () => {
       expect(completed).toBeDefined();
       if (completed && completed.kind === "event" && completed.event.type === "turn.completed") {
         expect(completed.event.outcome.status).toBe("succeeded");
-        expect(completed.event.nativeTurnRef?.nativeTurnKey).toBe("turn:0");
+        expect(completed.event.nativeTurnRef).toBeUndefined();
       }
+    });
+
+    it("does not reuse the previous native turn when prompt fails before starting", async () => {
+      const home = await mkdtemp(path.join(os.tmpdir(), "kimi-current-turn-"));
+      const sessionId = "session-existing";
+      const sessionDir = path.join(home, ".kimi-code", "sessions", sessionId);
+      const mainHomeDir = path.join(sessionDir, "agents", "main");
+      await mkdir(mainHomeDir, { recursive: true });
+      await writeFile(
+        path.join(home, ".kimi-code", "session_index.jsonl"),
+        JSON.stringify({ sessionId, sessionDir }) + "\n",
+      );
+      await writeFile(
+        path.join(sessionDir, "state.json"),
+        JSON.stringify({ id: sessionId, version: 2, cwd: "D:/project", agents: { main: { homedir: mainHomeDir, type: "main" } } }),
+      );
+      await writeFile(
+        path.join(mainHomeDir, "wire.jsonl"),
+        [
+          { type: "turn.prompt", agentId: "main", turnId: 7, input: [{ type: "text", text: "old prompt" }] },
+          { type: "turn.ended", agentId: "main", turnId: 7, reason: "cancelled" },
+        ].map((record) => JSON.stringify(record)).join("\n") + "\n",
+      );
+
+      const transport = new MockKimiTransport();
+      transport.promptMock = vi.fn(async () => {
+        throw new Error("prompt rejected before native turn");
+      });
+      const session = new KimiSession({
+        transport,
+        sessionId,
+        cwd: "D:/project",
+        initialState: {},
+        homeDirectory: home,
+      });
+      await session.execute({
+        type: "turn.start",
+        turnId: hostTurnIdSchema.parse("turn-host-new"),
+        input: [{ type: "text", text: "new prompt" }],
+      });
+
+      const outputs: HarnessOutput[] = [];
+      for await (const output of session.outputs) {
+        outputs.push(output);
+        if (output.kind === "event" && output.event.type === "turn.completed") break;
+      }
+      const completed = outputs.find(
+        (output) => output.kind === "event" && output.event.type === "turn.completed",
+      );
+      if (completed?.kind === "event" && completed.event.type === "turn.completed") {
+        expect(completed.event.outcome.status).toBe("failed");
+        expect(completed.event.nativeTurnRef).toBeUndefined();
+      }
+      expect(outputs.some(
+        (output) => output.kind === "event" && output.event.type === "item.started" && output.event.item.type === "fileChange",
+      )).toBe(false);
+      await rm(home, { recursive: true, force: true });
     });
 
     it("rejects concurrent turn start with sessionBusy", async () => {

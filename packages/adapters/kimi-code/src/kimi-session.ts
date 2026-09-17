@@ -28,6 +28,7 @@ import {
   type HostQuestionInteraction,
   type HostReasoningItem,
   type HostThreadSnapshot,
+  type HostTurnSnapshot,
   type HostUsage,
   type InteractionRespondAccepted,
   type InteractionRespondCommand,
@@ -65,7 +66,6 @@ import type {
 import type { KimiAcpTransportLike } from "./kimi-adapter.js";
 import {
   createKimiNativeSessionRef,
-  createKimiNativeTurnRef,
   locateKimiSession,
   parseKimiWireLog,
   readKimiSessionSnapshot,
@@ -154,7 +154,6 @@ export class KimiSession implements HarnessSession {
   #activeTurnPromise: Promise<void> | null = null;
   #activeInteraction: ActiveInteraction | null = null;
   #availableCommands: AvailableCommand[] = [];
-  #turnCount = 0;
 
   constructor(options: KimiSessionOptions) {
     this.#transport = options.transport;
@@ -323,6 +322,16 @@ export class KimiSession implements HarnessSession {
     }
   }
 
+  async #readNativeTurns(): Promise<HostTurnSnapshot[]> {
+    const located = await locateKimiSession(this.#sessionId, {
+      ...(this.#homeDirectory ? { homeDirectory: this.#homeDirectory } : {}),
+    });
+    if (!located) return [];
+    const { readFile } = await import("node:fs/promises");
+    const wireContent = await readFile(`${located.mainHomeDir}/wire.jsonl`, "utf8");
+    return parseKimiWireLog(wireContent, this.#sessionId, located.mainHomeDir);
+  }
+
   async #handleTurnStart(command: TurnStartCommand): Promise<HarnessResult<TurnStartAccepted>> {
     if (this.#activeTurn) {
       return err("sessionBusy", "Another turn is already in progress");
@@ -341,11 +350,11 @@ export class KimiSession implements HarnessSession {
   }
 
   async #runTurn(command: TurnStartCommand): Promise<void> {
-    const turnIndex = this.#turnCount++;
     const turnId = command.turnId;
     this.#channel.emit({ kind: "event", event: { type: "turn.started", turnId } });
 
     const inputText = command.input.map((i) => i.text).join("\n");
+    const nativeTurnsBefore = await this.#readNativeTurns().catch(() => null);
     const accumulator = new KimiToolCallAccumulator();
 
     let agentMessageItem: HostAgentMessageItem | null = null;
@@ -552,32 +561,29 @@ export class KimiSession implements HarnessSession {
     await delay(300);
 
     let nativeReason: string | undefined;
-    let nativeTurnRef = createKimiNativeTurnRef(this.#sessionId, turnIndex);
+    let currentNativeTurn: HostTurnSnapshot | undefined;
 
-    try {
-      const located = await locateKimiSession(this.#sessionId, {
-        ...(this.#homeDirectory ? { homeDirectory: this.#homeDirectory } : {}),
-      });
+    if (nativeTurnsBefore) {
+      try {
+        const previousKeys = new Set(nativeTurnsBefore.map((turn) => turn.nativeTurnRef.nativeTurnKey));
+        const newTurns = (await this.#readNativeTurns()).filter(
+          (turn) => !previousKeys.has(turn.nativeTurnRef.nativeTurnKey),
+        );
+        currentNativeTurn = newTurns.find(
+          (turn) => turn.input.map((input) => input.text).join("\n") === inputText,
+        ) ?? (newTurns.length === 1 ? newTurns[0] : undefined);
 
-      if (located) {
-        const wireFile = `${located.mainHomeDir}/wire.jsonl`;
-        const { readFile: readFsFile } = await import("node:fs/promises");
-        const wireContent = await readFsFile(wireFile, "utf8");
-        const parsedTurns = await parseKimiWireLog(wireContent, this.#sessionId, located.mainHomeDir);
-        const lastTurn = parsedTurns[parsedTurns.length - 1];
-
-        if (lastTurn) {
-          nativeTurnRef = lastTurn.nativeTurnRef;
-          if (lastTurn.outcome.status === "succeeded") {
+        if (currentNativeTurn) {
+          if (currentNativeTurn.outcome.status === "succeeded") {
             nativeReason = "completed";
-          } else if (lastTurn.outcome.status === "cancelled") {
+          } else if (currentNativeTurn.outcome.status === "cancelled") {
             nativeReason = "cancelled";
-          } else if (lastTurn.outcome.status === "failed") {
+          } else if (currentNativeTurn.outcome.status === "failed") {
             nativeReason = "failed";
           }
 
           // Emit any file change item discovered natively
-          for (const itemSnap of lastTurn.items) {
+          for (const itemSnap of currentNativeTurn.items) {
             if (itemSnap.item.type === "fileChange") {
               this.#channel.emit({
                 kind: "event",
@@ -598,9 +604,9 @@ export class KimiSession implements HarnessSession {
             }
           }
         }
+      } catch {
+        // Prompt outcome remains authoritative when the current native turn cannot be correlated.
       }
-    } catch {
-      // Fall back to promptResponse status
     }
 
     // Determine Turn Outcome
@@ -630,7 +636,7 @@ export class KimiSession implements HarnessSession {
       event: {
         type: "turn.completed",
         turnId,
-        nativeTurnRef,
+        ...(currentNativeTurn ? { nativeTurnRef: currentNativeTurn.nativeTurnRef } : {}),
         outcome: turnOutcome,
       },
     });
