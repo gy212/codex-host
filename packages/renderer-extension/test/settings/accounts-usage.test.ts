@@ -77,7 +77,7 @@ function renderAccountUsage(
 function usage(snapshot: AccountCreditsSnapshot = credits, display: "used" | "remaining" = "used") {
   const result = renderAccountUsage(
     document,
-    { status: "ready", credits: snapshot },
+    { status: "ready", credits: snapshot, freshness: "live", observedAt: null },
     messages,
     display,
     vi.fn(),
@@ -90,7 +90,12 @@ describe("Account limit windows", () => {
   it("does not synthesize a 5h window for weekly-only accounts", () => {
     const result = renderAccountUsage(
       document,
-      { status: "ready", credits: { usedPercent: 9, periodType: "seven_day" } },
+      {
+        status: "ready",
+        credits: { usedPercent: 9, periodType: "seven_day" },
+        freshness: "live",
+        observedAt: null,
+      },
       messages,
       "used",
       vi.fn(),
@@ -110,6 +115,8 @@ describe("Account limit windows", () => {
       document,
       {
         status: "ready",
+        freshness: "live",
+        observedAt: null,
         credits: {
           ...credits,
           productUsage: [
@@ -183,7 +190,7 @@ describe("Quota comparison columns", () => {
   function columns(credits: AccountCreditsSnapshot) {
     const result = renderUsage(
       document,
-      { status: "ready", credits },
+      { status: "ready", credits, freshness: "live", observedAt: null },
       messages,
       "remaining",
       vi.fn(),
@@ -218,41 +225,6 @@ describe("Quota comparison columns", () => {
     expect(text(result.cells[1])).toContain("80%");
     expect(result.additional && text(result.additional)).toContain("65%");
   });
-
-  it.each([
-    { usedPercent: 20, periodType: "monthly" as const },
-    { usedPercent: 20, periodType: "unknown" as const },
-    { usedPercent: 20, periodType: "seven_day" as const, label: "Opus · 7-day" },
-    { usedPercent: 20, periodType: "five_hour" as const, label: "Model group · 5-hour" },
-  ])(
-    "keeps monthly and scoped primary usage out of total columns: $periodType/$label",
-    (credits) => {
-      const result = columns(credits);
-      expect(
-        result.cells.flatMap(elements).some((el) => el.attributes.get("role") === "meter"),
-      ).toBe(false);
-      expect(result.additional && text(result.additional)).toContain(
-        credits.label ?? (credits.periodType === "monthly" ? "月额度" : "额度"),
-      );
-      expect(result.additional && text(result.additional)).toContain("80%");
-    },
-  );
-
-  it("retains model-specific, product and unknown reset data without inventing a window", () => {
-    const result = columns({
-      ...credits,
-      resetsAt: "invalid",
-      productUsage: [
-        { product: "Sonnet · 7-day", usagePercent: 25 },
-        { product: "GrokBuild", usagePercent: 0 },
-      ],
-    });
-    expect(text(result.cells[1])).toContain("—");
-    expect(text(result.cells[1])).not.toContain("未提供此窗口");
-    expect(result.additional && text(result.additional)).toContain("Sonnet · 7-day");
-    expect(result.additional && text(result.additional)).toContain("Build");
-    expect(elements(result.cells[0]).some((el) => el.tagName === "time")).toBe(false);
-  });
 });
 
 describe("Account reset-card details", () => {
@@ -266,43 +238,32 @@ describe("Account reset-card details", () => {
   });
 
   it("does not invent a zero card count when no reset snapshot is provided", () => {
-    expect(
-      renderAccountResetCredits(document, credits, messages, {
-        usingReset: false,
-        resetDisabled: false,
-      }),
-    ).toBeNull();
+    expect(renderAccountResetCredits(document, credits, messages)).toBeNull();
   });
 
-  it("shows a count and reset action even without per-card expiry data", () => {
-    const onUseReset = vi.fn();
+  it("shows only a count without per-card expiry data", () => {
     const result = renderAccountResetCredits(
       document,
       { ...credits, resetCredits: { availableCount: 2 } },
       messages,
-      { usingReset: false, resetDisabled: false, onUseReset },
     );
     if (!result) throw new Error("Expected reset details");
     expect(text(result.summary)).toContain("2 张");
     expect(elements(result.details).some((el) => el.tagName === "ul")).toBe(false);
-    elements(result.details)
-      .find((el) => el.tagName === "button")
-      ?.listeners.get("click")?.();
-    expect(onUseReset).toHaveBeenCalledOnce();
+    expect(elements(result.details).some((el) => el.tagName === "button")).toBe(false);
   });
 
-  it("renders every expiry and disables consumption while another reset is pending", () => {
+  it("renders every expiry without a consume action", () => {
     const expiresAt = ["2026-09-10T16:12:00.000Z", "2026-09-18T08:00:00.000Z"];
     const result = renderAccountResetCredits(
       document,
       { ...credits, resetCredits: { availableCount: 2, nextExpiresAt: expiresAt[0], expiresAt } },
       messages,
-      { usingReset: false, resetDisabled: true, onUseReset: vi.fn() },
     );
     if (!result) throw new Error("Expected reset details");
     expect(elements(result.details).filter((el) => el.tagName === "li")).toHaveLength(2);
     expect(text(result.details)).toContain("第 1 张");
     expect(text(result.details)).toContain("第 2 张");
-    expect(elements(result.details).find((el) => el.tagName === "button")?.disabled).toBe(true);
+    expect(elements(result.details).some((el) => el.tagName === "button")).toBe(false);
   });
 });

@@ -9,6 +9,7 @@ const read = (file) => readFile(path.join(root, file), "utf8");
 
 describe("workflow and form contracts", () => {
   it.each([
+    ".github/workflows/ci.yml",
     ".github/workflows/repository-maintenance.yml",
     ".github/workflows/release-packages.yml",
     ".github/ISSUE_TEMPLATE/bug_report.yml",
@@ -36,6 +37,14 @@ describe("workflow and form contracts", () => {
     expect(workflow).toContain("name: Check Linux ARM64");
   });
 
+  it("cancels superseded PR runs without cancelling main release evidence", async () => {
+    const workflow = await read(".github/workflows/ci.yml");
+    expect(workflow).toContain(
+      "group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.run_id }}",
+    );
+    expect(workflow).toContain("cancel-in-progress: ${{ github.event_name == 'pull_request' }}");
+  });
+
   it("runs write-capable maintenance only with trusted code and no dependency installation", async () => {
     const workflow = await read(".github/workflows/repository-maintenance.yml");
     expect(workflow).toContain("pull_request_target:");
@@ -51,6 +60,20 @@ describe("workflow and form contracts", () => {
       /npm (?:ci|install)|OPENAI_API_KEY|gh pr merge|convertPullRequestToDraft/u,
     );
     expect(workflow).not.toMatch(/github\.event\.(?:issue|pull_request)\.(?:body|title)/u);
+  });
+
+  it("allows explicit installer-only recovery without bypassing release prerequisites", async () => {
+    const workflow = await read(".github/workflows/release-packages.yml");
+    expect(workflow).toContain("skip_npm:");
+    expect(workflow).toContain("if: github.event_name != 'workflow_dispatch' || !inputs.skip_npm");
+    const publishRelease = workflow.slice(workflow.indexOf("  publish-release:"));
+    expect(publishRelease).toContain("needs.prepare.result == 'success'");
+    expect(publishRelease).toContain("needs.package.result == 'success'");
+    expect(publishRelease).toContain("needs.publish-npm.result == 'success'");
+    expect(publishRelease).toContain(
+      "github.event_name == 'workflow_dispatch' && inputs.skip_npm && needs.publish-npm.result == 'skipped'",
+    );
+    expect(publishRelease).toContain("await verifyRelease(");
   });
 
   it("pins external Actions and release build/publish checkouts to immutable SHAs", async () => {
@@ -72,5 +95,7 @@ describe("workflow and form contracts", () => {
     ).toHaveLength(2);
     expect(workflow.match(/await verifyRelease\(/gu)).toHaveLength(2);
     expect(workflow).toContain("release-evidence.json");
+    expect(workflow).toContain("timeout-minutes: 35");
+    expect(workflow).toContain("waitForCi: true");
   });
 });

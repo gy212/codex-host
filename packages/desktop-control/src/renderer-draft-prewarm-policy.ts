@@ -1,4 +1,6 @@
 import type { CdpClient } from "./cdp-client.js";
+import { committedReactAncestors } from "./renderer-react-ownership.js";
+import { retainRendererHostResponses } from "./renderer-host-response-ownership.js";
 import {
   installDraftPrewarmPolicyBridge,
   installDraftPrewarmPolicyInRenderer,
@@ -39,36 +41,59 @@ export function selectRendererRequestManager<Manager, RequestClient>(
   return eligible.length === 1 ? (eligible[0] ?? null) : null;
 }
 
-export function requestManagerFromHookState(value: unknown): object | null {
+export function requestManagerFromHookState(value: unknown, activeHostId?: string): object | null {
   const matchesRequestManager = (candidate: unknown): candidate is object => {
-    if (candidate == null || typeof candidate !== "object") return false;
-    const value = candidate as {
-      requestClient?: {
-        prewarmThreadStart?: unknown;
-        sendRequest?: unknown;
-        enqueueRequest?: unknown;
-      };
-      prewarmedThreadManager?: { discardAllPrewarmedThreads?: unknown };
-      sendRequest?: unknown;
-    };
+    if (
+      candidate == null ||
+      typeof candidate !== "object" ||
+      !("requestClient" in candidate) ||
+      !("prewarmedThreadManager" in candidate) ||
+      !("sendRequest" in candidate)
+    ) {
+      return false;
+    }
+    const requestClient = candidate.requestClient;
+    const prewarmedThreadManager = candidate.prewarmedThreadManager;
     return (
-      value.requestClient != null &&
-      typeof value.requestClient.prewarmThreadStart === "function" &&
-      typeof value.requestClient.sendRequest === "function" &&
-      typeof value.requestClient.enqueueRequest === "function" &&
-      typeof value.prewarmedThreadManager?.discardAllPrewarmedThreads === "function" &&
-      typeof value.sendRequest === "function"
+      requestClient != null &&
+      typeof requestClient === "object" &&
+      "prewarmThreadStart" in requestClient &&
+      typeof requestClient.prewarmThreadStart === "function" &&
+      "sendRequest" in requestClient &&
+      typeof requestClient.sendRequest === "function" &&
+      "enqueueRequest" in requestClient &&
+      typeof requestClient.enqueueRequest === "function" &&
+      prewarmedThreadManager != null &&
+      typeof prewarmedThreadManager === "object" &&
+      "discardAllPrewarmedThreads" in prewarmedThreadManager &&
+      typeof prewarmedThreadManager.discardAllPrewarmedThreads === "function" &&
+      typeof candidate.sendRequest === "function"
     );
   };
   if (matchesRequestManager(value)) return value;
   if (
     value != null &&
     typeof value === "object" &&
-    matchesRequestManager((value as { manager?: unknown }).manager)
+    "manager" in value &&
+    matchesRequestManager(value.manager)
   ) {
-    return (value as { manager: object }).manager;
+    return value.manager;
   }
-  return null;
+  if (typeof activeHostId !== "string" || activeHostId.length === 0) return null;
+  if (
+    value == null ||
+    typeof value !== "object" ||
+    !("addManager" in value) ||
+    typeof value.addManager !== "function" ||
+    !("getForHostId" in value) ||
+    typeof value.getForHostId !== "function" ||
+    !("waitForManagerForHostId" in value) ||
+    typeof value.waitForManagerForHostId !== "function"
+  ) {
+    return null;
+  }
+  const manager = value.getForHostId.call(value, activeHostId);
+  return matchesRequestManager(manager) ? manager : null;
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -77,34 +102,45 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 
 const FIND_REQUEST_MANAGER_EXPRESSION = `(() => {
   const requestManagerFromHookState = ${requestManagerFromHookState.toString()};
+  const committedReactAncestors = ${committedReactAncestors.toString()};
   const editors = [...document.querySelectorAll(
     '[data-codex-composer], [contenteditable="true"][role="textbox"]',
   )];
-  if (editors.length !== 1) {
-    return { candidateCount: 0, hostId: null, sendRequest: null };
+  if (editors.length === 0) {
+    return { candidateCount: 0, editorCount: editors.length, hostId: null, sendRequest: null };
   }
-  let element = editors[0];
-  let fiber = null;
-  while (element != null && fiber == null) {
-    const key = Object.getOwnPropertyNames(element).find((name) =>
-      name.startsWith('__reactFiber$'),
-    );
-    if (key != null) fiber = element[key];
-    element = element.parentElement;
-  }
-  const managers = new Set();
+  // Main and side chat can expose multiple editors backed by the same manager.
+  // Resolve their combined Host ownership before consulting any Host registry.
+  const composerAncestors = new Set();
   const activeHostIds = new Set();
-  for (let depth = 0; fiber != null && depth < 200; depth += 1, fiber = fiber.return) {
-    const props = fiber.memoizedProps;
-    if (props != null && typeof props === 'object') {
-      for (const name of ['executionTargetHostId', 'permissionsHostId']) {
-        const value = props[name];
-        if (typeof value === 'string' && value.length > 0) activeHostIds.add(value);
+  for (const editor of editors) {
+    let element = editor;
+    let fiber = null;
+    while (element != null && fiber == null) {
+      const key = Object.getOwnPropertyNames(element).find((name) =>
+        name.startsWith('__reactFiber$'),
+      );
+      if (key != null) fiber = element[key];
+      element = element.parentElement;
+    }
+    for (const current of committedReactAncestors(fiber)) {
+      composerAncestors.add(current);
+      const props = current.memoizedProps;
+      if (props != null && typeof props === 'object') {
+        for (const name of ['executionTargetHostId', 'permissionsHostId']) {
+          const value = props[name];
+          if (typeof value === 'string' && value.length > 0) activeHostIds.add(value);
+        }
       }
     }
+  }
+  const activeHostId =
+    activeHostIds.size === 1 ? activeHostIds.values().next().value : undefined;
+  const managers = new Set();
+  for (const fiber of composerAncestors) {
     let hook = fiber.memoizedState;
     for (let index = 0; hook != null && index < 120; index += 1, hook = hook.next) {
-      const manager = requestManagerFromHookState(hook.memoizedState);
+      const manager = requestManagerFromHookState(hook.memoizedState, activeHostId);
       if (manager != null) managers.add(manager);
     }
   }
@@ -125,12 +161,23 @@ const FIND_REQUEST_MANAGER_EXPRESSION = `(() => {
   const selected = (${selectRendererRequestManager.toString()})(candidates, [...activeHostIds]);
   return {
     candidateCount: selected == null ? candidates.length : 1,
+    editorCount: editors.length,
     hostId: selected?.hostId ?? null,
     manager: selected?.manager ?? null,
     requestClient: selected?.requestClient ?? null,
     prewarmedThreadManager: selected?.prewarmedThreadManager ?? null,
   };
 })()`;
+
+// Validate the pinned owner between Controller polls. An old manager can still
+// send requests after retirement, but Desktop delivers replies to its replacement.
+const IS_CURRENT_REQUEST_MANAGER = `function(manager, requestClient, hostId, prewarmedThreadManager) {
+  const current = ${FIND_REQUEST_MANAGER_EXPRESSION};
+  return current.editorCount === 0 || (
+    current.manager === manager && current.requestClient === requestClient &&
+    current.hostId === hostId && current.prewarmedThreadManager === prewarmedThreadManager
+  );
+}`;
 
 const INSTALL_RENDERER_POLICY_FUNCTION = `function(requestClient, hostId, prewarmedThreadManager) {
   return (${installDraftPrewarmPolicyBridge.toString()})(
@@ -139,6 +186,8 @@ const INSTALL_RENDERER_POLICY_FUNCTION = `function(requestClient, hostId, prewar
     hostId,
     window,
     prewarmedThreadManager,
+    () => (${IS_CURRENT_REQUEST_MANAGER})(this, requestClient, hostId, prewarmedThreadManager),
+    (${retainRendererHostResponses.toString()}),
   );
 }`;
 const REQUEST_MANAGER_WAIT_TIMEOUT_MS = 60_000;
@@ -165,6 +214,10 @@ function directRendererInstaller(): string {
       selected.hostId,
       window,
       selected.prewarmedThreadManager,
+      () => (${IS_CURRENT_REQUEST_MANAGER})(
+        selected.manager, selected.requestClient, selected.hostId, selected.prewarmedThreadManager,
+      ),
+      (${retainRendererHostResponses.toString()}),
     );
   })()`;
 }

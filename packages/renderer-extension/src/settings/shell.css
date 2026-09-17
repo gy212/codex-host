@@ -1,4 +1,5 @@
 :host {
+  --settings-titlebar-height: env(titlebar-area-height, 0px);
   --settings-bg: light-dark(#ffffff, #202020);
   --settings-sidebar: light-dark(#f7f7f8, #191919);
   --settings-panel: light-dark(#ffffff, #232323);
@@ -34,21 +35,24 @@
   letter-spacing: 0;
 }
 
-*,
-*::before,
-*::after {
-  box-sizing: border-box;
-  letter-spacing: 0;
-}
+/* Element defaults stay below Tailwind utilities; unlayered component classes still override them. */
+@layer base {
+  *,
+  *::before,
+  *::after {
+    box-sizing: border-box;
+    letter-spacing: 0;
+  }
 
-button,
-input,
-select {
-  font: inherit;
-}
+  button,
+  input,
+  select {
+    font: inherit;
+  }
 
-button {
-  color: inherit;
+  button {
+    color: inherit;
+  }
 }
 
 [hidden] {
@@ -68,8 +72,11 @@ button {
 }
 
 .codexhost-settings-dialog {
+  /* Native window controls sit above the DOM top layer. Center below them. */
+  inset: var(--settings-titlebar-height) 0 0;
   width: min(1120px, calc(100vw - 32px));
-  height: min(780px, calc(100vh - 32px));
+  height: min(780px, calc(100vh - var(--settings-titlebar-height) - 32px));
+  -webkit-app-region: no-drag;
   max-width: none;
   max-height: none;
   margin: auto;
@@ -83,6 +90,9 @@ button {
 }
 
 .codexhost-settings-dialog::backdrop {
+  /* Backdrops do not inherit the shell's custom properties. */
+  top: env(titlebar-area-height, 0px);
+  -webkit-app-region: no-drag;
   background: light-dark(rgb(0 0 0 / 24%), rgb(0 0 0 / 56%));
   backdrop-filter: blur(1px);
 }
@@ -664,85 +674,6 @@ button {
 .settings-session-import-running {
   color: var(--settings-muted);
   font-size: 12px;
-}
-
-.settings-preference-row {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 32px;
-  min-height: 88px;
-  padding: 18px 0;
-  border-top: 1px solid var(--settings-divider);
-  border-bottom: 1px solid var(--settings-divider);
-}
-
-.settings-preference-row__copy {
-  display: flex;
-  flex: 1 1 auto;
-  flex-direction: column;
-  min-width: 0;
-  gap: 5px;
-}
-
-.settings-preference-row__copy strong {
-  color: var(--settings-text);
-  font-size: 15px;
-  font-weight: 600;
-  line-height: 22px;
-}
-
-.settings-preference-row__copy span {
-  max-width: 680px;
-  color: var(--settings-muted);
-  font-size: 13px;
-  line-height: 20px;
-}
-
-.settings-preference-switch {
-  display: inline-flex;
-  align-items: center;
-  width: 42px;
-  height: 24px;
-  flex: none;
-  padding: 2px;
-  border: 0;
-  border-radius: 999px;
-  background: var(--settings-surface-hover);
-  cursor: pointer;
-  transition: background 120ms ease;
-}
-
-.settings-preference-switch[aria-checked="true"] {
-  justify-content: flex-end;
-  background: var(--settings-focus);
-}
-
-.settings-preference-switch:focus-visible {
-  outline: 2px solid var(--settings-focus);
-  outline-offset: 2px;
-}
-
-.settings-preference-switch__thumb {
-  width: 20px;
-  height: 20px;
-  border-radius: 50%;
-  background: var(--settings-primary-text);
-  box-shadow: 0 1px 3px rgb(0 0 0 / 24%);
-}
-
-.settings-preference-checkbox {
-  width: 18px;
-  height: 18px;
-  flex: none;
-  margin: 0;
-  accent-color: var(--settings-focus);
-  cursor: pointer;
-}
-
-.settings-preference-checkbox:focus-visible {
-  outline: 2px solid var(--settings-focus);
-  outline-offset: 2px;
 }
 
 .settings-connection-page-header {
@@ -1878,7 +1809,7 @@ button {
 @media (max-width: 720px) {
   .codexhost-settings-dialog {
     width: calc(100vw - 16px);
-    height: calc(100vh - 16px);
+    height: calc(100vh - var(--settings-titlebar-height) - 16px);
     border-radius: 10px;
   }
 

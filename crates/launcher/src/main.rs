@@ -3,6 +3,7 @@
 mod active_update;
 mod compatibility;
 mod desktop_attachment;
+mod desktop_path_overrides;
 mod installation_layout;
 mod native_harness_broker;
 mod runtime_instance;
@@ -694,6 +695,8 @@ fn supervise_desktop(
     descriptor_path: &Path,
 ) -> Result<(), Box<dyn Error>> {
     startup_trace("launching Codex Desktop");
+    let desktop_arguments =
+        desktop_path_overrides::launch_arguments(desktop_arguments, environment);
     let mut desktop = launch_desktop_session(
         installation,
         &options.shim,
@@ -702,7 +705,7 @@ fn supervise_desktop(
         } else {
             DesktopLaunchMode::DirectExecutable
         },
-        desktop_arguments,
+        &desktop_arguments,
         environment,
         Duration::from_secs(30),
     )?;
@@ -779,11 +782,13 @@ fn supervise_desktop(
     descriptor_path: &Path,
 ) -> Result<(), Box<dyn Error>> {
     startup_trace("launching Codex Desktop");
+    let desktop_arguments =
+        desktop_path_overrides::launch_arguments(desktop_arguments, environment);
     let mut desktop = launch_desktop(
         installation,
         &options.shim,
         DesktopLaunchMode::DirectExecutable,
-        desktop_arguments,
+        &desktop_arguments,
         environment,
     )?;
     startup_trace("Codex Desktop launched");
@@ -905,6 +910,7 @@ fn desktop_environment(
         environment.push((OsString::from(STARTUP_TRACE_ENV), OsString::from("1")));
     }
     environment.extend(npm_update_runtime_environment(env::vars_os()));
+    environment.extend(desktop_path_overrides::forwarded(env::vars_os()));
     environment
 }
 
@@ -1254,7 +1260,6 @@ mod tests {
     use std::io::{BufRead, BufReader, Write};
     use std::net::TcpListener;
     use std::path::{Path, PathBuf};
-    #[cfg(any(target_os = "windows", target_os = "macos"))]
     use std::process::Command;
     #[cfg(target_os = "macos")]
     use std::process::Stdio;
@@ -1656,6 +1661,58 @@ mod tests {
             OsString::from("CODEXHOST_DATA_DIR"),
             OsString::from("/home/codex/.codexhost"),
         )));
+    }
+
+    #[test]
+    fn desktop_environment_preserves_explicit_native_home_and_profile() {
+        const MARKER: &str = "CODEXHOST_TEST_DESKTOP_PATH_OVERRIDES";
+        if std::env::var_os(MARKER).is_none() {
+            let root = std::env::temp_dir().join("codexhost-desktop-path-fixture");
+            let output = Command::new(std::env::current_exe().expect("test executable"))
+                .args([
+                    "--exact",
+                    "tests::desktop_environment_preserves_explicit_native_home_and_profile",
+                    "--nocapture",
+                ])
+                .env(MARKER, "1")
+                .env("HOME", root.join("home"))
+                .env("ZDOTDIR", root.join("shell"))
+                .env("CODEX_HOME", root.join("codex"))
+                .env("CODEX_ELECTRON_USER_DATA_PATH", root.join("electron"))
+                .env("OPENAI_API_KEY", "synthetic-not-forwarded")
+                .env_remove(super::REMOTE_SSH_MANAGED_ENV)
+                .output()
+                .expect("run isolated environment test");
+            assert!(
+                output.status.success(),
+                "{}{}",
+                String::from_utf8_lossy(&output.stdout),
+                String::from_utf8_lossy(&output.stderr),
+            );
+            return;
+        }
+        let environment = desktop_environment(
+            &resolved_options(),
+            &runtime_control(),
+            Path::new("/synthetic/codexhost"),
+            Path::new("/synthetic/runtime.json"),
+            None,
+        );
+        for name in [
+            "HOME",
+            "ZDOTDIR",
+            "CODEX_HOME",
+            "CODEX_ELECTRON_USER_DATA_PATH",
+        ] {
+            assert!(
+                environment.contains(&(
+                    OsString::from(name),
+                    std::env::var_os(name).expect("synthetic path override"),
+                )),
+                "missing Desktop environment {name}"
+            );
+        }
+        assert!(!environment.iter().any(|(name, _)| name == "OPENAI_API_KEY"));
     }
 
     #[test]

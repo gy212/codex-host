@@ -288,7 +288,10 @@ export class CodeBuddySession implements HarnessSession {
       }
       return { ok: true, value: { cancellationRequested: true } };
     }
-    if (this.#busy || this.#active)
+    if (
+      this.#busy ||
+      (this.#active && command.type !== "model.select" && command.type !== "thinking.select")
+    )
       return failure("sessionBusy", "Session is executing an operation");
     this.#busy = true;
     try {

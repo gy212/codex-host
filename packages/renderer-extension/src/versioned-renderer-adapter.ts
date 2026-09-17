@@ -1,3 +1,5 @@
+import { committedReactAncestors } from "@codexhost/desktop-control/renderer-bindings";
+import { installIdleReleasePreferenceSync } from "./renderer-idle-release-preference.js";
 import {
   encodeHarnessPluginRoute,
   harnessIdSchema,
@@ -47,6 +49,22 @@ export const OMP_TRANSPORT_MODEL_ID = "codexhost/omp-native";
 export const OMP_TRANSPORT_MODEL_PREFIX = `${OMP_TRANSPORT_MODEL_ID}@`;
 export const ANTIGRAVITY_TRANSPORT_MODEL_ID = "codexhost/antigravity-native";
 export const ANTIGRAVITY_TRANSPORT_MODEL_PREFIX = `${ANTIGRAVITY_TRANSPORT_MODEL_ID}@`;
+
+/** Hermes rides the shared harness-plugin route codec instead of a private prefix. */
+export const HERMES_PLUGIN_ROUTE_PREFIX = "codexhost/plugin-v1@";
+
+export function hermesTransportModelId(
+  model?: HarnessModelRef,
+  permissionModeId?: HarnessPermissionModeId,
+): string {
+  return encodeHarnessPluginRoute({
+    harnessId: harnessIdSchema.parse("hermes"),
+    ...(model ? { model: harnessModelRefSchema.parse(model) } : {}),
+    ...(permissionModeId
+      ? { permissionModeId: harnessPermissionModeIdSchema.parse(permissionModeId) }
+      : {}),
+  });
+}
 
 export type RendererAdapterState = "installing" | "ready" | "unsupported";
 
@@ -117,7 +135,6 @@ export interface RendererDraftPrewarmPolicy {
   hostId: string;
   readonly requestTarget?: () => unknown;
   select(model: string | null): boolean;
-  readonly selectAccount?: (accountId: string | null) => boolean;
   clear(): Promise<void>;
 }
 
@@ -149,6 +166,9 @@ function transportModelIdForAgent(agent: RendererAgent): string | null {
   if (agent === "kiro-cli") return encodeHarnessPluginRoute({ harnessId: KIRO_CLI_HARNESS_ID });
   if (agent === "codebuddy" || agent === "cursor-cli")
     return encodeHarnessPluginRoute({ harnessId: harnessIdSchema.parse(agent) });
+  if (agent === "qoder" || agent === "qoder-cn") {
+    return encodeHarnessPluginRoute({ harnessId: harnessIdSchema.parse(agent) });
+  }
   return null;
 }
 
@@ -602,8 +622,7 @@ export function findActivePrewarmTargets(root: ParentNode): PrewarmTarget[] {
   }
 
   const targets = new Set<PrewarmTarget>();
-  let fiber = firstFiber as { return?: unknown; memoizedState?: unknown };
-  for (let depth = 0; depth < 200; depth += 1) {
+  for (const fiber of committedReactAncestors(firstFiber)) {
     let hook = fiber.memoizedState as { memoizedState?: unknown; next?: unknown } | null;
     for (let hookIndex = 0; hook && hookIndex < 100; hookIndex += 1) {
       const owner = requestTargetOwnerFromHookState(hook.memoizedState);
@@ -613,9 +632,6 @@ export function findActivePrewarmTargets(root: ParentNode): PrewarmTarget[] {
           ? (hook.next as { memoizedState?: unknown; next?: unknown })
           : null;
     }
-    const parent = fiber.return;
-    if ((typeof parent !== "object" && typeof parent !== "function") || parent === null) break;
-    fiber = parent as typeof fiber;
   }
   return [...targets];
 }
@@ -960,7 +976,16 @@ export function modelSelectionForAgent(
                         ...(thinkingOptionId && agent !== "cursor-cli" ? { thinkingOptionId } : {}),
                         ...(permissionModeId ? { permissionModeId } : {}),
                       })
-                    : transportModelIdForAgent(agent);
+                    : agent === "hermes"
+                      ? hermesTransportModelId(model, permissionModeId)
+                      : agent === "qoder" || agent === "qoder-cn"
+                        ? encodeHarnessPluginRoute({
+                            harnessId: harnessIdSchema.parse(agent),
+                            ...(model ? { model } : {}),
+                            ...(thinkingOptionId ? { thinkingOptionId } : {}),
+                            ...(permissionModeId ? { permissionModeId } : {}),
+                          })
+                        : transportModelIdForAgent(agent);
   return transportModelId ? { model: transportModelId, reasoningEffort } : officialSelection;
 }
 
@@ -996,6 +1021,7 @@ export function installCurrentRendererAdapter(): {
   };
 
   const usageSubscription = createThreadUsageSubscriptionRelay();
+  const idleReleaseSync = installIdleReleasePreferenceSync(window);
   const requestRouteResolver = createRendererRequestRouteResolver(
     () => window.__codexhostDraftPrewarmPolicyV1,
     () => findActivePrewarmTargets(document),
@@ -1016,7 +1042,13 @@ export function installCurrentRendererAdapter(): {
     const target = targets[0];
     if (targets.length !== 1 || !target) return null;
     const cached = clientsByTarget.get(target);
-    if (cached?.policy === policy && cached.requestClient === target.requestClient)
+    // A policy-less auxiliary lookup must not replace the active route's client.
+    // Explicit policy changes and request-client replacement still invalidate it.
+    if (
+      cached &&
+      (policy === null || cached.policy === policy) &&
+      cached.requestClient === target.requestClient
+    )
       return cached.client;
     const client = createRendererModelClient([target]);
     if (client) {
@@ -1037,6 +1069,14 @@ export function installCurrentRendererAdapter(): {
   const syncActiveRoute = (route: RendererRequestRoute | null): RendererModelClient | null => {
     const policy = route?.policy ?? null;
     const client = route ? modelClientForTargets(route.targets, route.policy) : null;
+    usageSubscription.connect(client);
+    const localClient =
+      policy?.hostId === "local"
+        ? client
+        : modelClientForTargets(
+            rendererRequestTargetsForHost(findActivePrewarmTargets(document), "local") ?? [],
+          );
+    idleReleaseSync.connect(localClient);
     if (activeRoutePolicy === policy && activeRouteClient === client) return client;
     activeRoutePolicy = policy;
     activeRouteClient = client;
@@ -1050,7 +1090,6 @@ export function installCurrentRendererAdapter(): {
   const currentModelClient = (): RendererModelClient => {
     const client = currentRequestRoute() ? activeRouteClient : null;
     if (!client) throw new Error("Renderer Model request manager is unavailable");
-    usageSubscription.connect(client);
     return client;
   };
   const modelControl: RendererModelClient = Object.freeze({
@@ -1100,39 +1139,41 @@ export function installCurrentRendererAdapter(): {
       if (!client.inspectCodexAccountUsage) throw new Error("Codex Account Usage is unavailable");
       return client.inspectCodexAccountUsage(input);
     },
-    consumeCodexAccountResetCredit: (
-      input: Parameters<NonNullable<RendererModelClient["consumeCodexAccountResetCredit"]>>[0],
+    listHarnessAccountSources: () => {
+      const client = currentModelClient();
+      if (!client.listHarnessAccountSources) {
+        throw new Error("Harness account source discovery is unavailable");
+      }
+      return client.listHarnessAccountSources();
+    },
+    inspectHarnessAccount: (
+      input: Parameters<NonNullable<RendererModelClient["inspectHarnessAccount"]>>[0],
     ) => {
       const client = currentModelClient();
-      if (!client.consumeCodexAccountResetCredit) {
-        throw new Error("Codex Account reset-credit consume is unavailable");
+      if (!client.inspectHarnessAccount) {
+        throw new Error("Harness account inspection is unavailable");
       }
-      return client.consumeCodexAccountResetCredit(input);
+      return client.inspectHarnessAccount(input);
     },
-    listHarnessAccounts: () => {
+    listHarnessAccounts: (
+      input?: Parameters<NonNullable<RendererModelClient["listHarnessAccounts"]>>[0],
+    ) => {
       const client = currentModelClient();
       if (!client.listHarnessAccounts) throw new Error("Harness account inspection is unavailable");
-      return client.listHarnessAccounts();
+      return client.listHarnessAccounts(input);
     },
     listCodexAccounts: () => currentModelClient().listCodexAccounts(),
     refreshCodexAccounts: () => {
       const client = currentModelClient();
       return client.refreshCodexAccounts?.() ?? client.listCodexAccounts();
     },
-    createCodexAccount: (input: Parameters<RendererModelClient["createCodexAccount"]>[0]) =>
-      currentModelClient().createCodexAccount(input),
-    deleteCodexAccount: (input: Parameters<RendererModelClient["deleteCodexAccount"]>[0]) =>
-      currentModelClient().deleteCodexAccount(input),
-    activateCodexAccount: (input: Parameters<RendererModelClient["activateCodexAccount"]>[0]) =>
-      currentModelClient().activateCodexAccount(input),
-    startCodexAccountLogin: (input: Parameters<RendererModelClient["startCodexAccountLogin"]>[0]) =>
-      currentModelClient().startCodexAccountLogin(input),
-    cancelCodexAccountLogin: (
-      input: Parameters<RendererModelClient["cancelCodexAccountLogin"]>[0],
-    ) => currentModelClient().cancelCodexAccountLogin(input),
-    subscribeCodexAccountLogin: (
-      listener: Parameters<RendererModelClient["subscribeCodexAccountLogin"]>[0],
-    ) => currentModelClient().subscribeCodexAccountLogin(listener),
+    subscribeCodexAccounts: (
+      listener: Parameters<NonNullable<RendererModelClient["subscribeCodexAccounts"]>>[0],
+    ) => {
+      const client = currentModelClient();
+      if (!client.subscribeCodexAccounts) throw new Error("Codex Account updates are unavailable");
+      return client.subscribeCodexAccounts(listener);
+    },
   });
   const forkControl = installRendererForkControl({
     getClient: () => modelControl,
@@ -1275,6 +1316,7 @@ export function installCurrentRendererAdapter(): {
         () => forkControl.dispose(),
         ...turnControlCleanups,
         () => usageSubscription.dispose(),
+        () => idleReleaseSync.dispose(),
       ];
       for (const cleanup of cleanups) {
         try {

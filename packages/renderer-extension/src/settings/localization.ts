@@ -26,6 +26,41 @@ export interface RendererSettingsMessages {
   readonly generalSection: string;
   readonly otherSection: string;
   readonly appearanceDescription: string;
+  readonly appearanceGroup: string;
+  readonly loadedSessions: {
+    title: string;
+    description: string;
+    columns: readonly string[];
+    empty: string;
+    failed: string;
+    unavailable: string;
+    loading: string;
+    minutes: string;
+    states: Record<"idle" | "running" | "busy" | "closing" | "failed" | "blocked", string>;
+    reasons: Record<
+      | "none"
+      | "disabled"
+      | "timeout"
+      | "operation"
+      | "background"
+      | "identity"
+      | "persistence"
+      | "closeFailed",
+      string
+    >;
+  };
+  readonly idleReleaseSection: string;
+  readonly idleReleaseTitle: string;
+  readonly idleReleaseDescription: string;
+  readonly idleReleaseHelpLabel: string;
+  readonly idleReleaseHelp: readonly string[];
+  readonly idleReleaseTimeout: string;
+  readonly idleReleaseTimeoutDescription: string;
+  readonly idleReleaseMinutes: string;
+  readonly idleReleaseInvalid: string;
+  readonly idleReleasePending: string;
+  readonly idleReleaseUnavailable: string;
+  readonly idleReleaseFailed: string;
   readonly reasoningSoftWrapTitle: string;
   readonly reasoningSoftWrapDescription: string;
   readonly pageUnavailable: string;
@@ -52,7 +87,6 @@ export interface RendererSettingsMessages {
   readonly sessionImportUpdatedAt: string;
   readonly sessionImportSessionId: string;
   readonly sessionImportRunning: string;
-  readonly sessionImportRunningUnknown: string;
   readonly sessionImportRunningHint: string;
   readonly sessionImportAction: string;
   readonly sessionImportImporting: string;
@@ -64,8 +98,6 @@ export interface RendererSettingsMessages {
   readonly sessionImportRetryOpen: string;
   readonly sessionImportRetrying: string;
   readonly connectionsDescription: string;
-  readonly accountsDescription: string;
-  readonly accountAdd: string;
   readonly accountColumnAccount: string;
   readonly accountConnected: string;
   readonly accountDefaultBadge: string;
@@ -75,7 +107,6 @@ export interface RendererSettingsMessages {
   readonly accountNoMatches: string;
   readonly accountNativeManaged: string;
   readonly accountNativeManagementHint: string;
-  readonly accountMore: string;
   readonly accountDetailsClose: string;
   readonly accountDefaultHint: string;
   readonly accountCreditsRemaining: string;
@@ -84,21 +115,6 @@ export interface RendererSettingsMessages {
   readonly accountCreditsFailed: string;
   readonly accountCreditsRetry: string;
   readonly accountCreditsRefresh: string;
-  readonly accountCreateFailed: string;
-  readonly accountDelete: string;
-  readonly accountDeleteConfirm: string;
-  readonly accountDeleting: string;
-  readonly accountDeleteFailed: string;
-  readonly accountActive: string;
-  readonly accountUse: string;
-  readonly accountSignIn: string;
-  readonly accountSigningIn: string;
-  readonly accountVerificationDescription: string;
-  readonly accountCopyCode: string;
-  readonly accountCopied: string;
-  readonly accountLoginCancel: string;
-  readonly accountLoginSucceeded: string;
-  readonly accountLoginFailed: string;
   readonly accountLoadFailed: string;
   readonly accountCreditsUsed: string;
   readonly accountCreditsResetAt: string;
@@ -112,14 +128,6 @@ export interface RendererSettingsMessages {
   readonly accountCreditsPeriodUnknown: string;
   readonly accountCreditsBuild: string;
   readonly accountResetCredits: string;
-  readonly accountResetCreditsUse: string;
-  readonly accountResetCreditsConfirm: string;
-  readonly accountResetCreditsUsing: string;
-  readonly accountResetCreditsFailed: string;
-  readonly accountResetCreditsNothingToReset: string;
-  readonly accountResetCreditsNoCredit: string;
-  readonly accountResetCreditsAlreadyRedeemed: string;
-  readonly accountResetCreditsSucceeded: string;
   readonly accountResetCreditsDetails: string;
   readonly accountResetCreditsCardExpiry: string;
   readonly connectionAdapter: string;
@@ -225,10 +233,55 @@ const ENGLISH_MESSAGES: RendererSettingsMessages = Object.freeze({
   sectionsLabel: "Settings sections",
   generalSection: "General",
   otherSection: "Other",
-  appearanceDescription: "Adjust how thinking text is displayed in the conversation.",
+  appearanceDescription: "Conversation display and local resource management.",
+  appearanceGroup: "Appearance",
+  loadedSessions: {
+    title: "Loaded sessions",
+    description:
+      "Local external Harnesses only. Refreshes every 10 seconds without waking sessions or resetting activity. Released sessions disappear from this list.",
+    columns: ["Session", "Harness", "State", "Since last activity", "Release constraint"],
+    empty: "No loaded external sessions.",
+    failed: "Could not load session status.",
+    unavailable: "Local Host does not support session status or is unavailable.",
+    loading: "Loading session status…",
+    minutes: "{minutes} min",
+    states: {
+      idle: "Idle",
+      running: "Running",
+      busy: "Busy",
+      closing: "Releasing",
+      failed: "Release failed",
+      blocked: "Blocked",
+    },
+    reasons: {
+      none: "—",
+      disabled: "Automatic release is off",
+      timeout: "Timeout not reached",
+      operation: "Turn or Host operation in progress",
+      background: "Subagent, steering, command or interaction pending",
+      identity: "Session identity unavailable or snapshot-only session",
+      persistence: "Persistence or output error",
+      closeFailed: "Restart Desktop before retrying",
+    },
+  },
+  idleReleaseSection: "Resource management",
+  idleReleaseTitle: "Release idle sessions",
+  idleReleaseDescription:
+    "Close background instances after the idle timeout; they resume on next use.",
+  idleReleaseHelpLabel: "About releasing idle sessions",
+  idleReleaseHelp: Object.freeze([
+    "After an Agent finishes replying, its background process may continue running and using memory. Keeping more sessions open may increase resource usage.",
+    "When enabled, codexhost periodically checks sessions and closes background instances once the idle timeout is reached and no tasks or interactions are pending, reducing resource usage. Chat history is not deleted. Opening the session again or sending a message restarts the process.",
+  ]),
+  idleReleaseTimeout: "Idle timeout",
+  idleReleaseTimeoutDescription: "5–1440 minutes.",
+  idleReleaseMinutes: "min",
+  idleReleaseInvalid: "Enter a whole number from 5 to 1440.",
+  idleReleasePending: "Syncing…",
+  idleReleaseUnavailable: "Not supported by this Host",
+  idleReleaseFailed: "Sync failed, try again",
   reasoningSoftWrapTitle: "Wrap thinking text",
-  reasoningSoftWrapDescription:
-    "Wrap long thinking lines in the transcript. Ordinary shell output is unaffected. Off by default.",
+  reasoningSoftWrapDescription: "Wrap long lines in thinking blocks. Shell output is unaffected.",
   pageUnavailable: "Page unavailable",
   inDevelopment: "In development",
   notAvailable: "Not available",
@@ -257,7 +310,6 @@ const ENGLISH_MESSAGES: RendererSettingsMessages = Object.freeze({
   sessionImportUpdatedAt: "Updated",
   sessionImportSessionId: "Session ID",
   sessionImportRunning: "Running",
-  sessionImportRunningUnknown: "Activity unknown",
   sessionImportRunningHint:
     "Close this session in its native client before importing, then refresh.",
   sessionImportAction: "Import and open",
@@ -272,43 +324,25 @@ const ENGLISH_MESSAGES: RendererSettingsMessages = Object.freeze({
   sessionImportRetrying: "Opening...",
   connectionsDescription:
     "View runtime status by Host. Select an item to inspect details or complete its setup.",
-  accountsDescription:
-    "View accounts and limits across Agents, and manage your Codex default account.",
   accountConnected: "Accounts",
-  accountDefaultBadge: "Codex default",
-  accountAdd: "Add Codex account",
+  accountDefaultBadge: "Current",
   accountColumnAccount: "Account",
   accountColumnActions: "Manage",
   accountSearch: "Search accounts or Agents…",
-  accountEmpty: "No accounts yet. Add a Codex account or sign in to an Agent in its native client.",
+  accountEmpty:
+    "No current identities found. Sign in through Codex Desktop or your Harness's native client.",
   accountNoMatches: "No matching accounts.",
   accountNativeManaged: "Native management",
   accountNativeManagementHint:
     "This account comes from {harness}'s native authentication. This page only displays identity and limits; manage sign-in, sign-out and switching in the native client.",
-  accountMore: "Codex account actions",
   accountDetailsClose: "Close account details",
-  accountDefaultHint: "Use as the default for new Codex tasks only",
+  accountDefaultHint: "This is the current identity for all Codex Threads.",
   accountCreditsRemaining: "Remaining",
   accountCreditsLoading: "Loading limits…",
   accountCreditsEmpty: "No limit data available",
   accountCreditsFailed: "Could not load limits",
   accountCreditsRetry: "Retry",
   accountCreditsRefresh: "Refresh limits",
-  accountCreateFailed: "Could not add the Account.",
-  accountDelete: "Delete",
-  accountDeleteConfirm: "Delete this Account and its local data? This cannot be undone.",
-  accountDeleting: "Deleting Account...",
-  accountDeleteFailed: "Could not delete the Account.",
-  accountActive: "Default",
-  accountUse: "Set as default",
-  accountSignIn: "Sign in",
-  accountSigningIn: "Starting device sign-in...",
-  accountVerificationDescription: "Open the verification page and enter this one-time code:",
-  accountCopyCode: "Copy code",
-  accountCopied: "Copied",
-  accountLoginCancel: "Cancel sign-in",
-  accountLoginSucceeded: "Sign-in completed.",
-  accountLoginFailed: "Sign-in failed.",
   accountLoadFailed: "Could not load Codex Accounts.",
   accountCreditsUsed: "Used",
   accountCreditsResetAt: "Quota resets: {time}",
@@ -322,15 +356,6 @@ const ENGLISH_MESSAGES: RendererSettingsMessages = Object.freeze({
   accountCreditsPeriodUnknown: "Limit",
   accountCreditsBuild: "Build",
   accountResetCredits: "Reset cards",
-  accountResetCreditsUse: "Use reset",
-  accountResetCreditsConfirm:
-    "This uses 1 reset card and resets both the 5-hour and 7-day limits. This cannot be undone.",
-  accountResetCreditsUsing: "Using reset card...",
-  accountResetCreditsFailed: "Could not use the reset card.",
-  accountResetCreditsNothingToReset: "Usage does not need a reset right now.",
-  accountResetCreditsNoCredit: "No reset cards are available.",
-  accountResetCreditsAlreadyRedeemed: "That reset card was already used.",
-  accountResetCreditsSucceeded: "Limits were reset.",
   accountResetCreditsDetails: "Reset card details",
   accountResetCreditsCardExpiry: "Card {index} · expires {time}",
   connectionAdapter: "Renderer adapter",
@@ -438,7 +463,7 @@ const ENGLISH_MESSAGES: RendererSettingsMessages = Object.freeze({
   aboutRepository: "Open-source repository",
   pageLabels: Object.freeze({
     connections: "Connections",
-    appearance: "Appearance",
+    appearance: "General",
     accounts: "Accounts",
     "session-import": "Session Import",
     updates: "Updates",
@@ -454,9 +479,54 @@ const CHINESE_MESSAGES: RendererSettingsMessages = Object.freeze({
   sectionsLabel: "设置分类",
   generalSection: "通用",
   otherSection: "其他",
-  appearanceDescription: "调整会话中思考文本的显示方式。",
+  appearanceDescription: "会话显示与本地资源管理。",
+  appearanceGroup: "外观",
+  loadedSessions: {
+    title: "已加载会话",
+    description:
+      "仅显示本地外部 Harness。每 10 秒刷新，不唤醒会话、不重置活动时间。释放后的会话从列表移除。",
+    columns: ["会话", "Harness", "状态", "距最后活动", "暂不能释放的原因"],
+    empty: "暂无已加载的外部会话。",
+    failed: "无法加载会话状态。",
+    unavailable: "本地 Host 不支持会话状态查询或当前不可用。",
+    loading: "正在加载会话状态…",
+    minutes: "{minutes} 分钟",
+    states: {
+      idle: "空闲",
+      running: "执行中",
+      busy: "忙碌",
+      closing: "释放中",
+      failed: "释放失败",
+      blocked: "不可释放",
+    },
+    reasons: {
+      none: "—",
+      disabled: "自动释放已关闭",
+      timeout: "尚未达到超时",
+      operation: "任务或 Host 操作尚未结束",
+      background: "存在子任务、转向、命令或待处理交互",
+      identity: "缺少可恢复身份或仅有快照",
+      persistence: "持久化或输出异常",
+      closeFailed: "需重启 Desktop 后重试",
+    },
+  },
+  idleReleaseSection: "资源管理",
+  idleReleaseTitle: "自动释放空闲会话",
+  idleReleaseDescription: "空闲超时后关闭后台实例，再次使用时自动恢复。",
+  idleReleaseHelpLabel: "自动释放空闲会话说明",
+  idleReleaseHelp: Object.freeze([
+    "Agent 回复结束后，后台进程可能仍在运行并占用内存。打开的会话越多，资源占用可能越大。",
+    "开启后，codexhost 会定期检查，在会话空闲达到设定时间、且没有任务或待处理交互时，自动关闭后台实例，减少资源占用。聊天记录不会删除，再次打开或发送消息时会重新启动该进程。",
+  ]),
+  idleReleaseTimeout: "空闲超时",
+  idleReleaseTimeoutDescription: "5～1440 分钟。",
+  idleReleaseMinutes: "分钟",
+  idleReleaseInvalid: "请输入 5～1440 之间的整数。",
+  idleReleasePending: "同步中…",
+  idleReleaseUnavailable: "当前 Host 不支持",
+  idleReleaseFailed: "同步失败，请重试",
   reasoningSoftWrapTitle: "换行显示思考文本",
-  reasoningSoftWrapDescription: "让思考块中的长行自动换行。普通 Shell 输出不受影响。默认关闭。",
+  reasoningSoftWrapDescription: "思考块中的长行自动换行，不影响 Shell 输出。",
   pageUnavailable: "页面不可用",
   inDevelopment: "开发中",
   notAvailable: "暂不可用",
@@ -484,7 +554,6 @@ const CHINESE_MESSAGES: RendererSettingsMessages = Object.freeze({
   sessionImportUpdatedAt: "更新时间",
   sessionImportSessionId: "会话 ID",
   sessionImportRunning: "运行中",
-  sessionImportRunningUnknown: "运行状态未知",
   sessionImportRunningHint: "请先在原生客户端关闭该会话，再刷新并导入。",
   sessionImportAction: "导入并打开",
   sessionImportImporting: "正在导入……",
@@ -496,42 +565,24 @@ const CHINESE_MESSAGES: RendererSettingsMessages = Object.freeze({
   sessionImportRetryOpen: "重试打开",
   sessionImportRetrying: "正在打开……",
   connectionsDescription: "按 Host 查看运行时状态。选择一项，在右侧检查详情或完成配置。",
-  accountsDescription: "查看各 Agent 的账号与额度，管理 Codex 默认账号。",
   accountConnected: "账号",
-  accountDefaultBadge: "Codex 默认",
-  accountAdd: "添加 Codex 账号",
+  accountDefaultBadge: "当前",
   accountColumnAccount: "账号",
   accountColumnActions: "管理",
   accountSearch: "搜索账号或 Agent…",
-  accountEmpty: "还没有账号，可添加 Codex 账号或在其他 Agent 的原生客户端登录。",
+  accountEmpty: "尚未识别到当前身份，请在 Codex Desktop 或对应 Harness 的原生客户端登录。",
   accountNoMatches: "没有匹配的账号。",
   accountNativeManaged: "原生管理",
   accountNativeManagementHint:
     "此账号来自 {harness} 的原生登录。这里只读展示身份与额度；登录、退出和切换请在其原生客户端中完成。",
-  accountMore: "Codex 账号操作",
   accountDetailsClose: "关闭账号详情",
-  accountDefaultHint: "仅设为新 Codex 任务的默认账号",
+  accountDefaultHint: "所有 Codex 会话当前使用此身份。",
   accountCreditsRemaining: "剩余",
   accountCreditsLoading: "正在读取额度…",
   accountCreditsEmpty: "暂无额度数据",
   accountCreditsFailed: "额度读取失败",
   accountCreditsRetry: "重试",
   accountCreditsRefresh: "刷新额度",
-  accountCreateFailed: "添加账号失败。",
-  accountDelete: "删除",
-  accountDeleteConfirm: "删除此账号及其本地数据？此操作无法撤销。",
-  accountDeleting: "正在删除账号...",
-  accountDeleteFailed: "删除账号失败。",
-  accountActive: "默认账号",
-  accountUse: "设为默认",
-  accountSignIn: "登录",
-  accountSigningIn: "正在启动设备登录...",
-  accountVerificationDescription: "打开验证页面并输入以下一次性代码：",
-  accountCopyCode: "复制代码",
-  accountCopied: "已复制",
-  accountLoginCancel: "取消登录",
-  accountLoginSucceeded: "登录成功。",
-  accountLoginFailed: "登录失败。",
   accountLoadFailed: "无法加载 Codex 账号。",
   accountCreditsUsed: "已用",
   accountCreditsResetAt: "额度重置时间：{time}",
@@ -545,14 +596,6 @@ const CHINESE_MESSAGES: RendererSettingsMessages = Object.freeze({
   accountCreditsPeriodUnknown: "额度",
   accountCreditsBuild: "Build",
   accountResetCredits: "重置卡",
-  accountResetCreditsUse: "使用重置",
-  accountResetCreditsConfirm: "将消耗 1 张重置卡，同时重置 5 小时和 7 天额度。此操作无法撤销。",
-  accountResetCreditsUsing: "正在使用重置卡...",
-  accountResetCreditsFailed: "使用重置卡失败。",
-  accountResetCreditsNothingToReset: "当前额度不需要重置。",
-  accountResetCreditsNoCredit: "没有可用的重置卡。",
-  accountResetCreditsAlreadyRedeemed: "这张重置卡已经使用过。",
-  accountResetCreditsSucceeded: "额度已重置。",
   accountResetCreditsDetails: "重置卡详情",
   accountResetCreditsCardExpiry: "第 {index} 张 · {time}到期",
   connectionAdapter: "Renderer 适配器",
@@ -658,7 +701,7 @@ const CHINESE_MESSAGES: RendererSettingsMessages = Object.freeze({
   aboutRepository: "开源仓库",
   pageLabels: Object.freeze({
     connections: "连接",
-    appearance: "外观",
+    appearance: "通用",
     accounts: "账号",
     "session-import": "会话导入",
     updates: "更新",

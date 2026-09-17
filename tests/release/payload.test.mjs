@@ -92,12 +92,14 @@ describe("release Payload", () => {
       await createPayload(root, target);
       const paths = await validatePayload({ payloadRoot: root, target, root: "/repo/source" });
       expect(paths).toEqual(expectedPayloadPaths(target));
-      expect(paths).toHaveLength(20 + preinstalledHarnessPluginPaths().length);
+      expect(paths).toHaveLength(24 + preinstalledHarnessPluginPaths().length);
       expect(expectedPayloadPaths(releaseTarget("windows-x64"))).toHaveLength(
-        22 + preinstalledHarnessPluginPaths().length,
+        26 + preinstalledHarnessPluginPaths().length,
       );
+      expect(paths).toContain("licenses/tailwindcss-LICENSE.txt");
       expect(paths).toContain("app/plugins/enabled.json");
       expect(paths).toContain("app/plugins/claude-code/plugin.mjs");
+      expect(paths).toContain("licenses/opencodex-LICENSE.txt");
       expect(expectedPayloadPaths(releaseTarget("windows-x64"))).toContain(
         "libexec/codexhost-node-repl.exe",
       );
@@ -150,7 +152,7 @@ describe("release Payload", () => {
     expect(() => numericPackageVersion("256.0.0")).toThrow("version limits");
   });
 
-  it("generates the OpenCode third-party notice from the repository license asset", async () => {
+  it("generates OpenCode and pinned opencodex notices from repository license assets", async () => {
     const root = process.cwd();
     const output = await temporaryDirectory();
     try {
@@ -160,15 +162,38 @@ describe("release Payload", () => {
         path.join(output, "licenses/OpenCode-SDK-LICENSE.txt"),
         "utf8",
       );
+      const opencodexLicense = await readFile(
+        path.join(output, "licenses/opencodex-LICENSE.txt"),
+        "utf8",
+      );
+      const opencodexSource = await readFile(
+        path.join(root, "third-party/opencodex.LICENSE"),
+        "utf8",
+      );
       expect(
         resolveRuntimeLicenseSource(root, {
           packageName: "@opencode-ai/sdk",
           source: "scripts/release/licenses/opencode-ai-sdk-1.18.25-MIT.txt",
         }),
       ).toBe(path.join(root, "scripts/release/licenses/opencode-ai-sdk-1.18.25-MIT.txt"));
+      for (const name of ["Qoder", "QoderCN"]) {
+        const licensePath = `licenses/${name}-Agent-SDK-LICENSE.txt`;
+        expect(notice).toContain(licensePath);
+        expect(await readFile(path.join(output, licensePath), "utf8")).toContain(
+          "Qoder Product Service Terms",
+        );
+      }
+      expect(notice).toContain("@qoder-ai/qoder-agent-sdk");
+      expect(notice).toContain("@qodercn-ai/qodercn-agent-sdk");
       expect(notice).toContain("@opencode-ai/sdk");
       expect(notice).toContain("licenses/OpenCode-SDK-LICENSE.txt");
       expect(license).toContain("Copyright (c) 2025 opencode");
+      expect(notice).toContain(
+        "opencodex native profiles (2d4d7a22381a2e497c2442902104619e25f937c7)",
+      );
+      expect(notice).toContain("License text: licenses/opencodex-LICENSE.txt");
+      expect(opencodexLicense).toBe(opencodexSource);
+      expect(opencodexLicense).toContain("MIT License");
     } finally {
       await rm(output, { recursive: true, force: true });
     }
@@ -181,6 +206,7 @@ describe("release Payload", () => {
       await createPayload(root, target);
       const notice = await readFile(path.join(root, "THIRD_PARTY_NOTICES.txt"), "utf8");
       expect(expectedPayloadPaths(target)).toContain("licenses/OpenCode-SDK-LICENSE.txt");
+      expect(expectedPayloadPaths(target)).toContain("licenses/opencodex-LICENSE.txt");
       expect(expectedPayloadPaths(target)).toContain("licenses/lucide-LICENSE.txt");
       expect(expectedPayloadPaths(target)).toContain("licenses/ws-LICENSE.txt");
       expect(notice).not.toContain(process.cwd());

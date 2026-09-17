@@ -22,6 +22,8 @@ export const RENDERER_PROBE_AGENTS = Object.freeze([
   "opencode",
   "grok",
   "antigravity",
+  "qoder",
+  "qoder-cn",
 ]);
 
 function usage() {

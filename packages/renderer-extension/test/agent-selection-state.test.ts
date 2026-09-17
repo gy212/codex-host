@@ -15,35 +15,35 @@ function controller(): DraftAgentController<object> {
 }
 
 describe("Renderer draft Agent controller", () => {
-  it("retains the submitted Codex Account across locking and Composer replacement", () => {
+  it("keeps Codex locked across Composer replacement", () => {
     const agents = controller();
     const draft = {};
     const replacement = {};
     agents.mount(draft, ["default"]);
     agents.markSubmissionPending(draft);
-    agents.recordSubmission(draft, "account-b");
+    agents.recordSubmission(draft);
     expect(agents.transfer(draft, replacement, ["conversation", "thread-b"])).toBe(true);
-    expect(agents.get(replacement)).toMatchObject({ phase: "locked", codexAccountId: "account-b" });
-    agents.recordSubmission(replacement, "account-a");
+    expect(agents.get(replacement)).toMatchObject({ phase: "locked", agent: "codex" });
+    agents.recordSubmission(replacement);
     agents.clearPendingSubmission(replacement);
-    expect(agents.get(replacement).codexAccountId).toBe("account-b");
-    expect(agents.mount({}, ["default"]).codexAccountId).toBeUndefined();
+    expect(agents.get(replacement)).toMatchObject({ phase: "locked", agent: "codex" });
+    expect(agents.mount({}, ["default"])).toMatchObject({ phase: "draft", agent: "codex" });
     const reopened = {};
-    agents.restore(reopened, "codex", undefined, undefined, undefined, "account-b");
-    expect(agents.get(reopened)).toMatchObject({ phase: "locked", codexAccountId: "account-b" });
+    agents.restore(reopened, "codex");
+    expect(agents.get(reopened)).toMatchObject({ phase: "locked", agent: "codex" });
   });
 
-  it("discards the Account captured by a cancelled draft submission", () => {
+  it("clears pending submission without changing the selected Agent", () => {
     const agents = controller();
     const draft = {};
     agents.mount(draft, ["default"]);
     agents.markSubmissionPending(draft);
-    agents.recordSubmission(draft, "account-a");
+    agents.recordSubmission(draft);
     agents.clearPendingSubmission(draft);
     expect(agents.isSubmissionPending(draft)).toBe(false);
-    expect(agents.get(draft).codexAccountId).toBeUndefined();
-    agents.recordSubmission(draft, "account-b");
-    expect(agents.get(draft).codexAccountId).toBe("account-b");
+    expect(agents.get(draft)).toMatchObject({ agent: "codex" });
+    agents.recordSubmission(draft);
+    expect(agents.get(draft)).toMatchObject({ agent: "codex" });
   });
 
   it("isolates Agent selection by Composer", async () => {
@@ -607,5 +607,72 @@ describe("Renderer draft Agent controller", () => {
       }),
     ).rejects.toThrow("could not restore the prior Agent");
     expect(agents.isSwitching(composer)).toBe(false);
+  });
+
+  it("supports Qoder draft switching, model scoping, and restoration", async () => {
+    const composer = {};
+    const agents = controller();
+    const qoderModel = harnessModelRefSchema.parse({ id: "qoder-default-model" });
+    const qoderThinking = harnessThinkingOptionIdSchema.parse("medium");
+    const permissionMode = harnessPermissionModeIdSchema.parse("auto");
+    const operations = {
+      applyAgent: () => true,
+      clearPrewarm: async () => undefined,
+    };
+
+    agents.mount(composer, ["default"]);
+    await agents.switchAgent(composer, "qoder", operations);
+    expect(agents.get(composer)).toMatchObject({
+      agent: "qoder",
+      phase: "draft",
+    });
+
+    agents.setExternalModel(composer, "qoder", qoderModel);
+    agents.setExternalThinkingOption(composer, "qoder", qoderThinking);
+    agents.setExternalPermissionMode(composer, "qoder", permissionMode);
+
+    expect(agents.modelForAgent(composer, "qoder")).toEqual(qoderModel);
+    expect(agents.thinkingOptionForAgent(composer, "qoder")).toBe(qoderThinking);
+    expect(agents.permissionModeForAgent(composer, "qoder")).toBe(permissionMode);
+
+    expect(agents.modelForAgent(composer, "pi")).toBeUndefined();
+    expect(agents.modelForAgent(composer, "kiro-cli")).toBeUndefined();
+
+    agents.lock(composer);
+    expect(agents.get(composer).phase).toBe("locked");
+
+    const restored = {};
+    agents.mount(restored, ["conversation", "qoder-thread-1"]);
+    agents.restore(restored, "qoder", qoderModel, qoderThinking, permissionMode);
+    expect(agents.get(restored)).toMatchObject({
+      agent: "qoder",
+      phase: "locked",
+      qoderModel,
+      qoderThinkingOptionId: qoderThinking,
+      permissionModeByAgent: {
+        qoder: permissionMode,
+      },
+    });
+    expect(agents.modelForAgent(restored, "qoder")).toEqual(qoderModel);
+    expect(agents.thinkingOptionForAgent(restored, "qoder")).toBe(qoderThinking);
+    expect(agents.permissionModeForAgent(restored, "qoder")).toBe(permissionMode);
+  });
+  it("restores, reads, updates and clears CodeBuddy thinking independently of Qoder", () => {
+    const agents = controller();
+    const composer = {};
+    const high = harnessThinkingOptionIdSchema.parse("high");
+    const low = harnessThinkingOptionIdSchema.parse("low");
+    agents.mount(composer, ["default"]);
+    agents.setExternalThinkingOption(composer, "qoder", low);
+    agents.restore(composer, "codebuddy", undefined, high);
+    expect(agents.thinkingOptionForAgent(composer, "codebuddy")).toBe(high);
+    agents.setExternalThinkingOption(composer, "codebuddy", low);
+    expect(agents.thinkingOptionForAgent(composer, "codebuddy")).toBe(low);
+    agents.setExternalThinkingOption(composer, "codebuddy");
+    expect(agents.thinkingOptionForAgent(composer, "codebuddy")).toBeUndefined();
+    agents.restore(composer, "codebuddy", undefined, high);
+    agents.restore(composer, "codebuddy");
+    expect(agents.thinkingOptionForAgent(composer, "codebuddy")).toBeUndefined();
+    expect(agents.thinkingOptionForAgent(composer, "qoder")).toBe(low);
   });
 });
