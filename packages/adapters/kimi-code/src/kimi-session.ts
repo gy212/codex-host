@@ -68,6 +68,7 @@ import type { KimiAcpTransportLike } from "./kimi-adapter.js";
 import {
   createKimiNativeSessionRef,
   readKimiSessionSnapshot,
+  readKimiSessionUsage,
 } from "./history.js";
 import {
   decodeKimiModelRefId,
@@ -133,6 +134,7 @@ export interface KimiSessionOptions {
   cwd: string;
   initialState: HarnessSessionState;
   initialUsage?: HostUsage | null;
+  contextWindowTokens?: number;
   homeDirectory?: string;
   kimiCodeHome?: string;
   readNativeSnapshot?: () => Promise<HostThreadSnapshot>;
@@ -149,6 +151,9 @@ export class KimiSession implements HarnessSession {
   #cwd: string;
   #state: HarnessSessionState;
   #usage: HostUsage | null = null;
+  #contextWindowTokens: number;
+  #homeDirectory: string | undefined;
+  #kimiCodeHome: string | undefined;
   #readNativeSnapshot: () => Promise<HostThreadSnapshot>;
   #closed = false;
   #faulted = false;
@@ -166,6 +171,9 @@ export class KimiSession implements HarnessSession {
     this.#cwd = options.cwd;
     this.#state = { ...options.initialState };
     this.#usage = options.initialUsage ?? null;
+    this.#contextWindowTokens = options.contextWindowTokens ?? 200_000;
+    this.#homeDirectory = options.homeDirectory;
+    this.#kimiCodeHome = options.kimiCodeHome;
     this.#readNativeSnapshot = options.readNativeSnapshot ?? (() =>
       readKimiSessionSnapshot(options.sessionId, {
         ...(options.homeDirectory ? { homeDirectory: options.homeDirectory } : {}),
@@ -181,6 +189,34 @@ export class KimiSession implements HarnessSession {
 
   get initialUsage(): HostUsage | null {
     return this.#usage ? { ...this.#usage } : null;
+  }
+
+  async refreshUsage(): Promise<void> {
+    await this.#refreshUsage();
+  }
+
+  async #refreshUsage(observedForTurnId?: HostTurnId): Promise<HostUsage | null> {
+    try {
+      const usage = await readKimiSessionUsage(this.#sessionId, {
+        ...(this.#homeDirectory ? { homeDirectory: this.#homeDirectory } : {}),
+        ...(this.#kimiCodeHome ? { kimiCodeHome: this.#kimiCodeHome } : {}),
+        contextWindowTokens: this.#contextWindowTokens,
+      });
+      if (usage) {
+        this.#usage = { ...(this.#usage ?? {}), ...usage };
+        this.#channel.emit({
+          kind: "event",
+          event: {
+            type: "session.usage.changed",
+            ...(observedForTurnId ? { observedForTurnId } : {}),
+            usage: { ...this.#usage },
+          },
+        });
+      }
+      return usage;
+    } catch {
+      return null;
+    }
   }
 
   get nativeSessionRef(): NativeSessionRef {
@@ -583,7 +619,7 @@ export class KimiSession implements HarnessSession {
             break;
           }
           case "usage": {
-            const parsedUsage = parseKimiUsage(event.update);
+            const parsedUsage = parseKimiUsage(event.update, this.#contextWindowTokens);
             if (parsedUsage) {
               this.#usage = { ...this.#usage, ...parsedUsage };
               this.#channel.emit({
@@ -689,6 +725,18 @@ export class KimiSession implements HarnessSession {
         });
       }
     }
+
+    // Refresh and emit usage for this turn
+    if (promptResponse && typeof (promptResponse as Record<string, unknown>).usage === "object") {
+      const promptUsage = parseKimiUsage(
+        (promptResponse as Record<string, unknown>).usage as Record<string, unknown>,
+        this.#contextWindowTokens,
+      );
+      if (promptUsage) {
+        this.#usage = { ...(this.#usage ?? {}), ...promptUsage };
+      }
+    }
+    await this.#refreshUsage(turnId);
 
     // Determine Turn Outcome
     let turnOutcome: TurnOutcome;

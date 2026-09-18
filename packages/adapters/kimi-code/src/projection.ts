@@ -354,14 +354,73 @@ export function readAcpToolContentText(content: unknown): string {
   }).join("\n");
 }
 
-export function parseKimiUsage(update: Record<string, unknown>): HostUsage | null {
+export function parseKimiUsage(
+  update: Record<string, unknown>,
+  contextWindowTokens?: number,
+): HostUsage | null {
   const used = typeof update.used === "number" ? update.used : undefined;
   const size = typeof update.size === "number" ? update.size : undefined;
 
-  if (used === undefined && size === undefined) return null;
+  const inputTokens = typeof update.inputTokens === "number"
+    ? update.inputTokens
+    : typeof update.inputOther === "number"
+      ? update.inputOther
+      : undefined;
+  const outputTokens = typeof update.outputTokens === "number"
+    ? update.outputTokens
+    : typeof update.output === "number"
+      ? update.output
+      : undefined;
+  const cachedInputTokens = typeof update.cachedInputTokens === "number"
+    ? update.cachedInputTokens
+    : typeof update.cachedReadTokens === "number"
+      ? update.cachedReadTokens
+      : typeof update.inputCacheRead === "number"
+        ? update.inputCacheRead
+        : undefined;
+  const cacheWriteInputTokens = typeof update.cacheWriteInputTokens === "number"
+    ? update.cacheWriteInputTokens
+    : typeof update.cachedWriteTokens === "number"
+      ? update.cachedWriteTokens
+      : typeof update.inputCacheCreation === "number"
+        ? update.inputCacheCreation
+        : undefined;
+  const totalTokens = typeof update.totalTokens === "number"
+    ? update.totalTokens
+    : (inputTokens !== undefined || outputTokens !== undefined || cachedInputTokens !== undefined || cacheWriteInputTokens !== undefined)
+      ? (inputTokens ?? 0) + (outputTokens ?? 0) + (cachedInputTokens ?? 0) + (cacheWriteInputTokens ?? 0)
+      : undefined;
+
+  const windowTokens = size ?? (contextWindowTokens && contextWindowTokens > 0 ? contextWindowTokens : undefined);
+  const contextUsed = used ?? (typeof update.tokens === "number" ? update.tokens : undefined);
+
+  if (
+    contextUsed === undefined &&
+    windowTokens === undefined &&
+    totalTokens === undefined &&
+    inputTokens === undefined
+  ) {
+    return null;
+  }
+
+  const promptTokens = (inputTokens ?? 0) + (cachedInputTokens ?? 0) + (cacheWriteInputTokens ?? 0);
+  const effectiveContextUsed = contextUsed ?? (promptTokens > 0 ? promptTokens : undefined);
+  const contextUsagePercent = windowTokens && effectiveContextUsed !== undefined && windowTokens > 0
+    ? (effectiveContextUsed / windowTokens) * 100
+    : undefined;
+  const cacheHitRatePercent = promptTokens > 0 && cachedInputTokens !== undefined
+    ? (cachedInputTokens / promptTokens) * 100
+    : undefined;
 
   return {
-    ...(size !== undefined ? { contextWindowTokens: size } : {}),
-    ...(used !== undefined ? { contextUsedTokens: used } : {}),
+    ...(windowTokens !== undefined ? { contextWindowTokens: windowTokens } : {}),
+    ...(effectiveContextUsed !== undefined ? { contextUsedTokens: effectiveContextUsed } : {}),
+    ...(inputTokens !== undefined ? { inputTokens } : {}),
+    ...(outputTokens !== undefined ? { outputTokens } : {}),
+    ...(cachedInputTokens !== undefined ? { cachedInputTokens } : {}),
+    ...(cacheWriteInputTokens !== undefined ? { cacheWriteInputTokens } : {}),
+    ...(totalTokens !== undefined ? { totalTokens } : {}),
+    ...(contextUsagePercent !== undefined ? { contextUsagePercent } : {}),
+    ...(cacheHitRatePercent !== undefined ? { cacheHitRatePercent } : {}),
   };
 }

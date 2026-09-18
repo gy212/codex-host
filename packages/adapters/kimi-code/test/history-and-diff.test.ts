@@ -6,9 +6,11 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import {
   createKimiNativeSessionRef,
   createKimiNativeTurnRef,
+  extractKimiUsageFromWireLog,
   locateKimiSession,
   parseKimiWireLog,
   readKimiSessionSnapshot,
+  readKimiSessionUsage,
 } from "../src/history.js";
 
 describe("Kimi Code History & Diff", () => {
@@ -276,21 +278,23 @@ describe("Kimi Code History & Diff", () => {
     });
   });
 
+  async function createSnapshotSession(sessionId: string): Promise<string> {
+    const sessionDir = path.join(tempDir, "sessions", sessionId);
+    const mainHomeDir = path.join(sessionDir, "agents", "main");
+    await mkdir(mainHomeDir, { recursive: true });
+    await writeFile(
+      path.join(tempDir, "session_index.jsonl"),
+      JSON.stringify({ sessionId, sessionDir }) + "\n",
+    );
+    await writeFile(
+      path.join(sessionDir, "state.json"),
+      JSON.stringify({ id: sessionId, version: 2, cwd: tempDir }),
+    );
+    return mainHomeDir;
+  }
+
   describe("readKimiSessionSnapshot", () => {
-    async function createSnapshotSession(sessionId: string): Promise<string> {
-      const sessionDir = path.join(tempDir, "sessions", sessionId);
-      const mainHomeDir = path.join(sessionDir, "agents", "main");
-      await mkdir(mainHomeDir, { recursive: true });
-      await writeFile(
-        path.join(tempDir, "session_index.jsonl"),
-        JSON.stringify({ sessionId, sessionDir }) + "\n",
-      );
-      await writeFile(
-        path.join(sessionDir, "state.json"),
-        JSON.stringify({ id: sessionId, version: 2, cwd: tempDir }),
-      );
-      return mainHomeDir;
-    }
+
 
     it("reads snapshot using located directory", async () => {
       const sessionId = "session-snap";
@@ -333,6 +337,73 @@ describe("Kimi Code History & Diff", () => {
       await expect(readKimiSessionSnapshot(sessionId, { kimiCodeHome: tempDir })).rejects.toThrow(
         /Failed to read Kimi native history.*wire\.jsonl/,
       );
+    });
+  });
+
+  describe("Usage extraction", () => {
+    it("extracts cumulative usage and contextUsedTokens from wire log", () => {
+      const wire = [
+        JSON.stringify({
+          type: "usage.record",
+          turnId: 0,
+          usage: { inputOther: 100, output: 50, inputCacheRead: 500, inputCacheCreation: 200 },
+        }),
+        JSON.stringify({
+          type: "token_counting.measured",
+          tokens: 850,
+        }),
+        JSON.stringify({
+          type: "usage.record",
+          turnId: 1,
+          usage: { inputOther: 50, output: 80, inputCacheRead: 800, inputCacheCreation: 100 },
+        }),
+        JSON.stringify({
+          type: "token_counting.turn_recorded",
+          turnId: 1,
+          tokens: 1030,
+        }),
+      ].join("\n");
+
+      const usage = extractKimiUsageFromWireLog(wire, 200_000);
+      expect(usage).toEqual({
+        inputTokens: 150,
+        outputTokens: 130,
+        cachedInputTokens: 1300,
+        cacheWriteInputTokens: 300,
+        totalTokens: 1880,
+        contextUsedTokens: 1030,
+        contextWindowTokens: 200_000,
+        contextUsagePercent: (1030 / 200_000) * 100,
+        cacheHitRatePercent: (1300 / 1750) * 100,
+      });
+    });
+
+    it("returns null when wire log contains no usage records", () => {
+      expect(extractKimiUsageFromWireLog("", 200_000)).toBeNull();
+      expect(extractKimiUsageFromWireLog("{\"type\":\"metadata\"}", 200_000)).toBeNull();
+    });
+
+    it("reads usage for a located session via readKimiSessionUsage", async () => {
+      const sessionId = "session-usage-test";
+      const mainHomeDir = await createSnapshotSession(sessionId);
+      await writeFile(
+        path.join(mainHomeDir, "wire.jsonl"),
+        JSON.stringify({
+          type: "usage.record",
+          usage: { inputOther: 200, output: 100, inputCacheRead: 1000, inputCacheCreation: 0 },
+        }) + "\n" +
+        JSON.stringify({
+          type: "token_counting.measured",
+          tokens: 1300,
+        }) + "\n",
+      );
+
+      const usage = await readKimiSessionUsage(sessionId, { kimiCodeHome: tempDir, contextWindowTokens: 200_000 });
+      expect(usage).toBeDefined();
+      expect(usage?.inputTokens).toBe(200);
+      expect(usage?.outputTokens).toBe(100);
+      expect(usage?.contextUsedTokens).toBe(1300);
+      expect(usage?.contextWindowTokens).toBe(200_000);
     });
   });
 });

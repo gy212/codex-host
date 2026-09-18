@@ -122,6 +122,19 @@ export function parseKimiConfigToml(content: string): KimiNativeConfig {
   return config;
 }
 
+export function resolveKimiContextWindow(
+  modelAlias?: string,
+  config?: KimiNativeConfig | null,
+): number {
+  if (modelAlias && config?.models) {
+    const found = config.models.find((m) => m.alias === modelAlias);
+    if (found?.maxContextSize && found.maxContextSize > 0) {
+      return found.maxContextSize;
+    }
+  }
+  return 200_000;
+}
+
 export interface AcpConfigOptionChoice {
   value: string;
   name?: string;

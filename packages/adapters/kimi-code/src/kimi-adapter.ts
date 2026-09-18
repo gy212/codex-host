@@ -36,6 +36,7 @@ import {
   createKimiNativeSessionRef,
   getKimiCodeHome,
   locateKimiSession,
+  readKimiSessionUsage,
 } from "./history.js";
 import {
   buildModelCatalogFromConfig,
@@ -45,6 +46,7 @@ import {
   kimiPermissionModeCatalog,
   parseKimiConfigToml,
   readKimiEffectiveConfig,
+  resolveKimiContextWindow,
   type KimiNativeConfig,
 } from "./models.js";
 import {
@@ -310,6 +312,19 @@ export class KimiAdapter implements HarnessAdapter {
       onFault: (error) => session?.handleTransportFault(error),
     });
 
+    const kimiHome = getKimiCodeHome(this.#options.homeDirectory, environment);
+    const configPath = path.join(kimiHome, "config.toml");
+    let nativeConfig: KimiNativeConfig | null = null;
+    try {
+      const configContent = await readFile(configPath, "utf8");
+      nativeConfig = parseKimiConfigToml(configContent);
+    } catch {
+      nativeConfig = null;
+    }
+
+    const selectedModelAlias = input.model ? decodeKimiModelRefId(input.model.id) : nativeConfig?.defaultModel;
+    const contextWindowTokens = resolveKimiContextWindow(selectedModelAlias, nativeConfig);
+
     if (input.kind === "create") {
       try {
         const sessionInfo = await transport.openSession({ kind: "create", cwd });
@@ -329,6 +344,7 @@ export class KimiAdapter implements HarnessAdapter {
           sessionId: sessionInfo.sessionId,
           cwd,
           initialState: state,
+          contextWindowTokens,
           kimiCodeHome,
           ...(this.#options.homeDirectory ? { homeDirectory: this.#options.homeDirectory } : {}),
         });
@@ -376,11 +392,19 @@ export class KimiAdapter implements HarnessAdapter {
         const configOptions = await applyRequestedConfig(transport, sessionInfo.configOptions, requested);
         const state = stateFromConfig(sessionInfo.sessionId, cwd, configOptions);
 
+        const initialUsage = await readKimiSessionUsage(sessionId, {
+          kimiCodeHome,
+          ...(this.#options.homeDirectory ? { homeDirectory: this.#options.homeDirectory } : {}),
+          contextWindowTokens,
+        });
+
         session = new KimiSession({
           transport,
           sessionId: sessionInfo.sessionId,
           cwd,
           initialState: state,
+          initialUsage,
+          contextWindowTokens,
           kimiCodeHome,
           ...(this.#options.homeDirectory ? { homeDirectory: this.#options.homeDirectory } : {}),
         });

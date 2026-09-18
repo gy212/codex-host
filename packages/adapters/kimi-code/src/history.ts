@@ -4,18 +4,20 @@ import path from "node:path";
 
 import { createTwoFilesPatch } from "diff";
 
-import type {
-  HistoricalTurnOutcome,
-  HostAgentMessageItem,
-  HostCommandExecutionItem,
-  HostFileChange,
-  HostFileChangeItem,
-  HostItemSnapshot,
-  HostReasoningItem,
-  HostTextInput,
-  HostThreadSnapshot,
-  HostToolExecutionItem,
-  HostTurnSnapshot,
+import {
+  parseHostUsage,
+  type HistoricalTurnOutcome,
+  type HostAgentMessageItem,
+  type HostCommandExecutionItem,
+  type HostFileChange,
+  type HostFileChangeItem,
+  type HostItemSnapshot,
+  type HostReasoningItem,
+  type HostTextInput,
+  type HostThreadSnapshot,
+  type HostToolExecutionItem,
+  type HostTurnSnapshot,
+  type HostUsage,
 } from "@codexhost/harness-adapter";
 import {
   harnessIdSchema,
@@ -531,4 +533,85 @@ export async function readKimiSessionSnapshot(
 
   const turns = await parseKimiWireLog(wireContent, sessionId, located.mainHomeDir);
   return { turns };
+}
+
+export function extractKimiUsageFromWireLog(
+  wireContent: string,
+  contextWindowTokens?: number,
+): HostUsage | null {
+  const lines = wireContent.split("\n");
+  let inputTokens = 0;
+  let outputTokens = 0;
+  let cachedInputTokens = 0;
+  let cacheWriteInputTokens = 0;
+  let contextUsedTokens: number | undefined = undefined;
+  let hasUsage = false;
+
+  for (const line of lines) {
+    const trimmed = line.trim();
+    if (!trimmed) continue;
+    try {
+      const record = JSON.parse(trimmed) as Record<string, unknown>;
+      const type = record.type;
+      if (type === "usage.record" && typeof record.usage === "object" && record.usage !== null) {
+        const u = record.usage as Record<string, unknown>;
+        if (typeof u.inputOther === "number") inputTokens += u.inputOther;
+        if (typeof u.output === "number") outputTokens += u.output;
+        if (typeof u.inputCacheRead === "number") cachedInputTokens += u.inputCacheRead;
+        if (typeof u.inputCacheCreation === "number") cacheWriteInputTokens += u.inputCacheCreation;
+        hasUsage = true;
+      }
+      if (
+        (type === "token_counting.turn_recorded" || type === "token_counting.measured") &&
+        typeof record.tokens === "number"
+      ) {
+        contextUsedTokens = record.tokens;
+        hasUsage = true;
+      }
+    } catch {
+      // ignore malformed line
+    }
+  }
+
+  if (!hasUsage) return null;
+
+  const promptTokens = inputTokens + cachedInputTokens + cacheWriteInputTokens;
+  const totalTokens = promptTokens + outputTokens;
+  const windowTokens = contextWindowTokens && contextWindowTokens > 0 ? contextWindowTokens : 200_000;
+
+  const effectiveUsedTokens = contextUsedTokens ?? (promptTokens > 0 ? promptTokens : undefined);
+  const contextUsagePercent = windowTokens && effectiveUsedTokens !== undefined && windowTokens > 0
+    ? (effectiveUsedTokens / windowTokens) * 100
+    : undefined;
+  const cacheHitRatePercent = promptTokens > 0 && cachedInputTokens !== undefined
+    ? (cachedInputTokens / promptTokens) * 100
+    : undefined;
+
+  return parseHostUsage({
+    inputTokens,
+    outputTokens,
+    cachedInputTokens,
+    cacheWriteInputTokens,
+    totalTokens,
+    contextWindowTokens: windowTokens,
+    ...(effectiveUsedTokens !== undefined ? { contextUsedTokens: effectiveUsedTokens } : {}),
+    ...(contextUsagePercent !== undefined ? { contextUsagePercent } : {}),
+    ...(cacheHitRatePercent !== undefined ? { cacheHitRatePercent } : {}),
+  });
+}
+
+export async function readKimiSessionUsage(
+  sessionId: string,
+  options: { homeDirectory?: string; kimiCodeHome?: string; contextWindowTokens?: number } = {},
+): Promise<HostUsage | null> {
+  const located = await locateKimiSession(sessionId, options);
+  if (!located) return null;
+
+  const wirePath = path.join(located.mainHomeDir, "wire.jsonl");
+  try {
+    const wireContent = await readFile(wirePath, "utf8");
+    return extractKimiUsageFromWireLog(wireContent, options.contextWindowTokens);
+  } catch {
+    return null;
+  }
 }

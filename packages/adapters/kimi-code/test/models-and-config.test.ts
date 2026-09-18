@@ -14,6 +14,7 @@ import {
   kimiPermissionModeCatalog,
   parseAcpConfigOptions,
   parseKimiConfigToml,
+  resolveKimiContextWindow,
   type KimiNativeConfig,
 } from "../src/models.js";
 
@@ -202,6 +203,22 @@ default_model = "test"
       const catalog = buildModelCatalogFromAcp([], fallbackConfig);
       expect(catalog.models).toHaveLength(1);
       expect(decodeKimiModelRefId(catalog.models[0]!.ref.id)).toBe("fallback-m");
+    });
+  });
+
+  describe("resolveKimiContextWindow", () => {
+    it("resolves context window from config model", () => {
+      const config: KimiNativeConfig = {
+        defaultModel: "relay",
+        models: [
+          { alias: "relay", model: "claude-sonnet-5", maxContextSize: 200000 },
+          { alias: "small", maxContextSize: 32000 },
+        ],
+      };
+      expect(resolveKimiContextWindow("relay", config)).toBe(200000);
+      expect(resolveKimiContextWindow("small", config)).toBe(32000);
+      expect(resolveKimiContextWindow("unknown", config)).toBe(200000);
+      expect(resolveKimiContextWindow(undefined, null)).toBe(200000);
     });
   });
 });

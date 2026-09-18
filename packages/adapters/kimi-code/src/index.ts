@@ -20,6 +20,7 @@ export {
   kimiPermissionModeCatalog,
   parseKimiConfigToml,
   buildModelCatalogFromConfig,
+  resolveKimiContextWindow,
   type KimiModeId,
   type KimiNativeConfig,
 } from "./models.js";
@@ -27,9 +28,12 @@ export {
   locateKimiSession,
   readKimiSessionSnapshot,
   parseKimiWireLog,
+  extractKimiUsageFromWireLog,
+  readKimiSessionUsage,
   createKimiNativeSessionRef,
   createKimiNativeTurnRef,
   type KimiStateJson,
   type KimiSessionIndexEntry,
 } from "./history.js";
+export { parseKimiUsage } from "./projection.js";
 export { createHarnessAdapter } from "./plugin.js";
