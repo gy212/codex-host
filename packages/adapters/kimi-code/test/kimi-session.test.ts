@@ -816,6 +816,15 @@ describe("KimiSession", () => {
         expect(reasoningCompleted.event.snapshot.item.text).toBe("思考中...");
       }
 
+      // Verify reasoning item was updated with matching text BEFORE completion
+      const reasoningUpdated = outputs.find(
+        (o) => o.kind === "event" && o.event.type === "item.updated" && o.event.update.type === "text.append",
+      );
+      expect(reasoningUpdated).toBeDefined();
+      if (reasoningUpdated && reasoningUpdated.kind === "event" && reasoningUpdated.event.type === "item.updated" && reasoningUpdated.event.update.type === "text.append") {
+        expect(reasoningUpdated.event.update.text).toBe("思考中...");
+      }
+
       // Verify final agent message has no commentary phase
       const agentCompleted = outputs.find(
         (o) => o.kind === "event" && o.event.type === "item.completed" && o.event.snapshot.item.type === "agentMessage",

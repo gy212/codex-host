@@ -421,11 +421,22 @@ export class KimiSession implements HarnessSession {
 
     const completeReasoning = () => {
       if (currentReasoning) {
-        const text = currentReasoning.text.trim() || "思考中...";
+        if (!currentReasoning.text) {
+          currentReasoning.text = "思考中...";
+          this.#channel.emit({
+            kind: "event",
+            event: {
+              type: "item.updated",
+              turnId,
+              itemId: currentReasoning.itemId,
+              update: { type: "text.append", text: currentReasoning.text },
+            },
+          });
+        }
         const item: HostReasoningItem = {
           type: "reasoning",
           itemId: currentReasoning.itemId,
-          text,
+          text: currentReasoning.text,
         };
         this.#channel.emit({
           kind: "event",
