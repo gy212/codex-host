@@ -155,12 +155,12 @@ export function buildModelCatalogFromConfig(
   thinkingOptionsList?: HarnessThinkingOption[],
 ): HarnessModelCatalog {
   const fallbackThinkingOptions: HarnessThinkingOption[] = [
-    { id: harnessThinkingOptionIdSchema.parse("off"), label: "Thinking Off" },
-    { id: harnessThinkingOptionIdSchema.parse("low"), label: "Thinking Low" },
-    { id: harnessThinkingOptionIdSchema.parse("medium"), label: "Thinking Medium" },
-    { id: harnessThinkingOptionIdSchema.parse("high"), label: "Thinking High" },
-    { id: harnessThinkingOptionIdSchema.parse("xhigh"), label: "Thinking Xhigh" },
-    { id: harnessThinkingOptionIdSchema.parse("max"), label: "Thinking Max" },
+    { id: harnessThinkingOptionIdSchema.parse("off"), label: "Off" },
+    { id: harnessThinkingOptionIdSchema.parse("low"), label: "Low" },
+    { id: harnessThinkingOptionIdSchema.parse("medium"), label: "Medium" },
+    { id: harnessThinkingOptionIdSchema.parse("high"), label: "High" },
+    { id: harnessThinkingOptionIdSchema.parse("xhigh"), label: "Xhigh" },
+    { id: harnessThinkingOptionIdSchema.parse("max"), label: "Max" },
   ];
 
   const thinkingOptions = thinkingOptionsList && thinkingOptionsList.length > 0
@@ -240,6 +240,12 @@ export function readKimiEffectiveConfig(configOptions: unknown[]): {
   };
 }
 
+export function formatThinkingLabel(raw: string): string {
+  const stripped = raw.replace(/^Thinking\s+/iu, "").trim();
+  if (!stripped) return raw;
+  return stripped.charAt(0).toUpperCase() + stripped.slice(1);
+}
+
 export function buildModelCatalogFromAcp(
   configOptions: unknown[],
   fallbackConfig?: KimiNativeConfig,
@@ -250,10 +256,11 @@ export function buildModelCatalogFromAcp(
   if (thinkingOptions?.options && Array.isArray(thinkingOptions.options)) {
     for (const opt of thinkingOptions.options) {
       if (typeof opt.value === "string" && opt.value.trim().length > 0) {
+        const rawLabel = opt.name || opt.value;
         thinking.push(
           harnessThinkingOptionSchema.parse({
             id: harnessThinkingOptionIdSchema.parse(opt.value),
-            label: (opt.name || opt.value).slice(0, 256),
+            label: formatThinkingLabel(rawLabel).slice(0, 256),
           }),
         );
       }
@@ -262,9 +269,9 @@ export function buildModelCatalogFromAcp(
 
   if (thinking.length === 0) {
     thinking.push(
-      { id: harnessThinkingOptionIdSchema.parse("off"), label: "Thinking Off" },
-      { id: harnessThinkingOptionIdSchema.parse("medium"), label: "Thinking Medium" },
-      { id: harnessThinkingOptionIdSchema.parse("high"), label: "Thinking High" },
+      { id: harnessThinkingOptionIdSchema.parse("off"), label: "Off" },
+      { id: harnessThinkingOptionIdSchema.parse("medium"), label: "Medium" },
+      { id: harnessThinkingOptionIdSchema.parse("high"), label: "High" },
     );
   }
 

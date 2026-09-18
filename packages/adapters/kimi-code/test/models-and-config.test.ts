@@ -10,6 +10,7 @@ import {
   buildModelCatalogFromConfig,
   decodeKimiModelRefId,
   encodeKimiModelRef,
+  formatThinkingLabel,
   isKimiModeId,
   kimiPermissionModeCatalog,
   parseKimiConfigToml,
@@ -201,6 +202,21 @@ default_model = "test"
       expect(firstModel.label).toBe("Claude Sonnet 5 (Relay)");
       expect(validated.defaultModel?.id).toBe(firstModel.ref.id);
       expect(validated.defaultThinkingOptionId).toBe("high");
+      expect(validated.thinkingOptions).toEqual([
+        { id: "off", label: "Off" },
+        { id: "high", label: "High" },
+      ]);
+    });
+
+    it("strips 'Thinking ' prefix and capitalizes tier names", () => {
+      expect(formatThinkingLabel("Thinking Off")).toBe("Off");
+      expect(formatThinkingLabel("Thinking Low")).toBe("Low");
+      expect(formatThinkingLabel("Thinking Medium")).toBe("Medium");
+      expect(formatThinkingLabel("Thinking High")).toBe("High");
+      expect(formatThinkingLabel("Thinking Xhigh")).toBe("Xhigh");
+      expect(formatThinkingLabel("Thinking Max")).toBe("Max");
+      expect(formatThinkingLabel("off")).toBe("Off");
+      expect(formatThinkingLabel("low")).toBe("Low");
     });
 
     it("falls back to config if ACP models are empty", () => {

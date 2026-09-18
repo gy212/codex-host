@@ -20,6 +20,7 @@ export {
   kimiPermissionModeCatalog,
   parseKimiConfigToml,
   buildModelCatalogFromConfig,
+  formatThinkingLabel,
   resolveKimiContextWindow,
   type KimiModeId,
   type KimiNativeConfig,

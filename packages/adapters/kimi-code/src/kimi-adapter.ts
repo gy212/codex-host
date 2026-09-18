@@ -269,9 +269,9 @@ export class KimiAdapter implements HarnessAdapter {
       modelCatalog = {
         models: [],
         thinkingOptions: [
-          { id: harnessThinkingOptionIdSchema.parse("off"), label: "Thinking Off" },
-          { id: harnessThinkingOptionIdSchema.parse("medium"), label: "Thinking Medium" },
-          { id: harnessThinkingOptionIdSchema.parse("high"), label: "Thinking High" },
+          { id: harnessThinkingOptionIdSchema.parse("off"), label: "Off" },
+          { id: harnessThinkingOptionIdSchema.parse("medium"), label: "Medium" },
+          { id: harnessThinkingOptionIdSchema.parse("high"), label: "High" },
         ],
       };
     }
