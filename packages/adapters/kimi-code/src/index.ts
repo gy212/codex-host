@@ -40,6 +40,8 @@ export { parseKimiUsage } from "./projection.js";
 export {
   buildKimiCommandCatalog,
   formatKimiCommandPrompt,
+  formatKimiCommandOutput,
+  stripAnsi,
   KIMI_DEFAULT_COMMANDS,
   KIMI_DEFAULT_COMMAND_CATALOG,
 } from "./slash-commands.js";

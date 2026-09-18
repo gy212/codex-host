@@ -8,6 +8,8 @@ import {
 import {
   buildKimiCommandCatalog,
   formatKimiCommandPrompt,
+  formatKimiCommandOutput,
+  stripAnsi,
 } from "../src/slash-commands.js";
 
 describe("slash-commands", () => {
@@ -204,6 +206,63 @@ describe("slash-commands", () => {
       if (!result2.ok) {
         expect(result2.error.code).toBe("invalidRequest");
       }
+    });
+  });
+
+  describe("stripAnsi", () => {
+    it("removes ANSI escape sequences and normalizes CRLF", () => {
+      const input = "\u001b[32mSuccess\u001b[0m: \u001b[1mDone\u001b[0m\r\nLine 2";
+      expect(stripAnsi(input)).toBe("Success: Done\nLine 2");
+    });
+
+    it("returns plain text unchanged", () => {
+      expect(stripAnsi("hello world")).toBe("hello world");
+    });
+  });
+
+  describe("formatKimiCommandOutput", () => {
+    it("formats /help output into a structured Markdown bullet list", () => {
+      const raw = "Available commands:\n/compact — Compact context\n/status — Current status\n/usage — Token usage";
+      const formatted = formatKimiCommandOutput(raw);
+      expect(formatted).toContain("### Available Commands\n");
+      expect(formatted).toContain("- **`/compact`** — Compact context");
+      expect(formatted).toContain("- **`/status`** — Current status");
+      expect(formatted).toContain("- **`/usage`** — Token usage");
+    });
+
+    it("formats /status output into a structured Markdown list with bold labels", () => {
+      const raw = "Session: session_123\nModel: relay (thinking: on)\nMode: default\nWorking directory: D:\\project";
+      const formatted = formatKimiCommandOutput(raw);
+      expect(formatted).toContain("### Session Status\n");
+      expect(formatted).toContain("- **Session**: `session_123`");
+      expect(formatted).toContain("- **Model**: `relay (thinking: on)`");
+      expect(formatted).toContain("- **Mode**: `default`");
+      expect(formatted).toContain("- **Working directory**: `D:\\project`");
+    });
+
+    it("formats /usage output into a structured Markdown list", () => {
+      const raw = "Context: 120 / 200000 tokens (0%)\nSession total: no LLM calls yet";
+      const formatted = formatKimiCommandOutput(raw);
+      expect(formatted).toContain("### Session Token Usage\n");
+      expect(formatted).toContain("- **Context**: 120 / 200000 tokens (0%)");
+      expect(formatted).toContain("- **Session total**: no LLM calls yet");
+    });
+
+    it("formats empty status messages into clean italic Markdown", () => {
+      expect(formatKimiCommandOutput("No background tasks.")).toBe("*No background tasks.*");
+      expect(formatKimiCommandOutput("No MCP servers configured for this session.")).toBe(
+        "*No MCP servers configured for this session.*",
+      );
+    });
+
+    it("strips ANSI sequences from general command output", () => {
+      const raw = "\u001b[31mError:\u001b[0m something went wrong";
+      expect(formatKimiCommandOutput(raw)).toBe("Error: something went wrong");
+    });
+
+    it("preserves already structured Markdown responses", () => {
+      const markdown = "# Title\n\nSome introductory text.\n\n- Point A\n- Point B";
+      expect(formatKimiCommandOutput(markdown)).toBe(markdown);
     });
   });
 });

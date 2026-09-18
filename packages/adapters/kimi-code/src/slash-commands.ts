@@ -103,3 +103,97 @@ export function formatKimiCommandPrompt(
   const prompt = text.length > 0 ? `${base} ${text}` : base;
   return { ok: true, value: prompt };
 }
+
+/**
+ * Strips ANSI terminal escape sequences and normalizes newlines.
+ */
+export function stripAnsi(text: string): string {
+  if (!text) return text;
+  return text.replace(/\u001b\[[0-9;]*[a-zA-Z]/gu, "").replaceAll("\r\n", "\n");
+}
+
+/**
+ * Formats Kimi command outputs (such as /help, /status, /usage, /tasks, /mcp,
+ * or key-value plain text lines) into structured, readable Markdown so they
+ * render cleanly in Codex Desktop without text collapsing or terminal artifacts.
+ */
+export function formatKimiCommandOutput(text: string): string {
+  if (!text) return text;
+  const cleaned = stripAnsi(text);
+
+  // 1. /help output
+  if (/^Available commands:\s*\n/iu.test(cleaned)) {
+    const lines = cleaned.split("\n");
+    const formatted: string[] = ["### Available Commands\n"];
+    for (const rawLine of lines.slice(1)) {
+      const line = rawLine.trim();
+      if (!line) continue;
+      const match = line.match(/^(\/[^\s—:-]+)\s*[—:-]\s*(.+)$/u);
+      if (match) {
+        formatted.push(`- **\`${match[1]}\`** — ${match[2]}`);
+      } else {
+        formatted.push(`- ${line}`);
+      }
+    }
+    return formatted.join("\n");
+  }
+
+  // 2. /status output
+  if (/^Session:\s+[^\n]+\nModel:\s+/iu.test(cleaned)) {
+    const lines = cleaned.split("\n");
+    const formatted: string[] = ["### Session Status\n"];
+    for (const line of lines) {
+      const trimmed = line.trim();
+      if (!trimmed) continue;
+      const colonIdx = trimmed.indexOf(":");
+      if (colonIdx > 0) {
+        const key = trimmed.slice(0, colonIdx).trim();
+        const val = trimmed.slice(colonIdx + 1).trim();
+        formatted.push(`- **${key}**: \`${val}\``);
+      } else {
+        formatted.push(`- ${trimmed}`);
+      }
+    }
+    return formatted.join("\n");
+  }
+
+  // 3. /usage output
+  if (/^Context:\s+\d+\s*\/\s*\d+\s+tokens/iu.test(cleaned)) {
+    const lines = cleaned.split("\n");
+    const formatted: string[] = ["### Session Token Usage\n"];
+    for (const line of lines) {
+      const trimmed = line.trim();
+      if (!trimmed) continue;
+      const colonIdx = trimmed.indexOf(":");
+      if (colonIdx > 0) {
+        const key = trimmed.slice(0, colonIdx).trim();
+        const val = trimmed.slice(colonIdx + 1).trim();
+        formatted.push(`- **${key}**: ${val}`);
+      } else {
+        formatted.push(`- ${trimmed}`);
+      }
+    }
+    return formatted.join("\n");
+  }
+
+  // 4. Single-line empty status messages
+  if (/^No background tasks\.?$/iu.test(cleaned.trim())) {
+    return "*No background tasks.*";
+  }
+  if (/^No MCP servers configured/iu.test(cleaned.trim())) {
+    return "*No MCP servers configured for this session.*";
+  }
+
+  // 5. Raw command lists (/cmd — desc)
+  if (/^\/[a-z0-9_.:-]+\s+[—:-]\s+/imu.test(cleaned) && !cleaned.includes("- **`")) {
+    const lines = cleaned.split("\n");
+    const formatted = lines.map((l) => {
+      const trimmed = l.trim();
+      const m = trimmed.match(/^(\/[^\s—:-]+)\s*[—:-]\s*(.+)$/u);
+      return m ? `- **\`${m[1]}\`** — ${m[2]}` : trimmed;
+    });
+    return formatted.join("\n");
+  }
+
+  return cleaned;
+}

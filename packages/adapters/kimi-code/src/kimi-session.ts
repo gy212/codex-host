@@ -84,6 +84,8 @@ import {
 import {
   buildKimiCommandCatalog,
   formatKimiCommandPrompt,
+  formatKimiCommandOutput,
+  stripAnsi,
   KIMI_DEFAULT_COMMANDS,
 } from "./slash-commands.js";
 
@@ -402,6 +404,7 @@ export class KimiSession implements HarnessSession {
     this.#channel.emit({ kind: "event", event: { type: "turn.started", turnId } });
 
     const inputText = command.input.map((i) => i.text).join("\n");
+    const isCommandTurn = inputText.trim().startsWith("/");
     const accumulator = new KimiToolCallAccumulator();
     let previousNativeTurnKeys: Set<string> | null = null;
     let identityError: Error | null = null;
@@ -536,14 +539,17 @@ export class KimiSession implements HarnessSession {
         switch (event.type) {
           case "agent.text": {
             completeReasoning();
-            appendAgentText(event.text);
+            const textToAppend = isCommandTurn
+              ? formatKimiCommandOutput(event.text)
+              : stripAnsi(event.text);
+            appendAgentText(textToAppend);
             break;
           }
           case "agent.thought": {
             if (currentAgentMessage) {
               completeAgentMessage("commentary");
             }
-            appendReasoningText(event.text);
+            appendReasoningText(stripAnsi(event.text));
             break;
           }
           case "tool.call": {
