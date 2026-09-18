@@ -4,6 +4,7 @@ import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { InitializeResponse } from "@agentclientprotocol/sdk";
 import {
+  harnessCommandCatalogSchema,
   harnessIdSchema,
   harnessInspectionSchema,
   harnessPermissionModeIdSchema,
@@ -721,6 +722,95 @@ effort = "medium"
       if (!result.ok) {
         expect(result.error.code).toBe("sessionNotFound");
       }
+    });
+  });
+
+  describe("commandCatalog", () => {
+    it("is initially empty and conforms to schema", () => {
+      const adapter = new KimiAdapter();
+      expect(adapter.commandCatalog).toEqual({ commands: [] });
+      expect(harnessCommandCatalogSchema.parse(adapter.commandCatalog)).toEqual({ commands: [] });
+    });
+
+    it("dynamically synchronizes commandCatalog upon session creation", async () => {
+      const adapter = new KimiAdapter(
+        { homeDirectory: tempDir },
+        {
+          resolveExecutable: () => "kimi",
+          createTransport: () => fakeTransport,
+        },
+      );
+
+      expect(adapter.commandCatalog).toEqual({ commands: [] });
+
+      const result = await adapter.open({
+        kind: "create",
+        cwd: tempDir,
+      });
+
+      expect(result.ok).toBe(true);
+      expect(adapter.commandCatalog.commands).toHaveLength(1);
+      expect(adapter.commandCatalog.commands[0]).toEqual({
+        id: "compact",
+        invocation: "/compact",
+        label: "compact",
+        description: "Compact the current session",
+        argumentMode: "text",
+      });
+    });
+
+    it("dynamically updates commandCatalog when session emits commands.update", async () => {
+      const adapter = new KimiAdapter(
+        { homeDirectory: tempDir },
+        {
+          resolveExecutable: () => "kimi",
+          createTransport: () => fakeTransport,
+        },
+      );
+
+      const result = await adapter.open({
+        kind: "create",
+        cwd: tempDir,
+      });
+      expect(result.ok).toBe(true);
+      expect(adapter.commandCatalog.commands).toHaveLength(1);
+
+      // Simulate ACP sending an updated commands notification
+      fakeTransport.sessionEventHandler?.({
+        type: "commands.update",
+        commands: [
+          { name: "compact", description: "Compact session", input: { hint: "prompt" } },
+          { name: "/clear", description: "Clear context", input: null },
+          { name: "export", description: "Export session data", input: { hint: "filename" } },
+        ],
+      });
+
+      expect(adapter.commandCatalog.commands).toHaveLength(3);
+      expect(adapter.commandCatalog.commands.map((c) => c.id)).toEqual(["compact", "clear", "export"]);
+      expect(adapter.commandCatalog.commands[1].invocation).toBe("/clear");
+      expect(adapter.commandCatalog.commands[1].argumentMode).toBe("none");
+      expect(adapter.commandCatalog.commands[2].argumentMode).toBe("text");
+    });
+
+    it("resets commandCatalog to empty upon adapter.close()", async () => {
+      const adapter = new KimiAdapter(
+        { homeDirectory: tempDir },
+        {
+          resolveExecutable: () => "kimi",
+          createTransport: () => fakeTransport,
+        },
+      );
+
+      await adapter.open({
+        kind: "create",
+        cwd: tempDir,
+      });
+
+      expect(adapter.commandCatalog.commands.length).toBeGreaterThan(0);
+
+      await adapter.close();
+
+      expect(adapter.commandCatalog).toEqual({ commands: [] });
     });
   });
 });

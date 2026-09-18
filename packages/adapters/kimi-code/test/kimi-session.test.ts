@@ -119,10 +119,54 @@ describe("KimiSession", () => {
       expect(listResult.ok).toBe(true);
       if (listResult.ok) {
         expect(harnessCommandCatalogSchema.parse(listResult.value)).toBeDefined();
+        expect(listResult.value.commands).toHaveLength(0);
       }
     });
 
-    it("executes command as slash prompt", async () => {
+    it("updates command catalog dynamically on commands.update event", async () => {
+      const transport = new MockKimiTransport();
+      let lastCatalog: unknown = null;
+      const session = new KimiSession({
+        transport,
+        sessionId: "session-123",
+        cwd: "D:/project",
+        initialState: {},
+        onCommandsUpdate: (catalog) => {
+          lastCatalog = catalog;
+        },
+      });
+
+      transport.sessionEventHandler?.({
+        type: "commands.update",
+        commands: [
+          { name: "/compact", description: "Compact context", input: { hint: "prompt" } },
+          { name: "clear", description: "Clear context", input: null },
+        ],
+      });
+
+      expect(lastCatalog).toBeDefined();
+      const listResult = await session.commands.list();
+      expect(listResult.ok).toBe(true);
+      if (listResult.ok) {
+        expect(listResult.value.commands).toHaveLength(2);
+        expect(listResult.value.commands[0]).toEqual({
+          id: "compact",
+          invocation: "/compact",
+          label: "compact",
+          description: "Compact context",
+          argumentMode: "text",
+        });
+        expect(listResult.value.commands[1]).toEqual({
+          id: "clear",
+          invocation: "/clear",
+          label: "clear",
+          description: "Clear context",
+          argumentMode: "none",
+        });
+      }
+    });
+
+    it("executes command as slash prompt with text arguments", async () => {
       const transport = new MockKimiTransport();
       let promptSent = "";
       transport.promptMock = vi.fn(async (text: string) => {
@@ -149,6 +193,137 @@ describe("KimiSession", () => {
         if (output.kind === "event" && output.event.type === "turn.completed") break;
       }
       expect(promptSent).toBe("/compact extra");
+    });
+
+    it("executes command without arguments and strips leading slashes", async () => {
+      const transport = new MockKimiTransport();
+      let promptSent = "";
+      transport.promptMock = vi.fn(async (text: string) => {
+        promptSent = text;
+        return { stopReason: "end_turn" };
+      });
+
+      const session = new KimiSession({
+        transport,
+        sessionId: "session-123",
+        cwd: "D:/project",
+        initialState: {},
+      });
+
+      const turnId = hostTurnIdSchema.parse("turn-cmd-2");
+      const execResult = await session.commands.execute({
+        commandId: "///help",
+        turnId,
+      });
+
+      expect(execResult.ok).toBe(true);
+      for await (const output of session.outputs) {
+        if (output.kind === "event" && output.event.type === "turn.completed") break;
+      }
+      expect(promptSent).toBe("/help");
+    });
+
+    it("rejects command execution when commandId is invalid", async () => {
+      const transport = new MockKimiTransport();
+      const session = new KimiSession({
+        transport,
+        sessionId: "session-123",
+        cwd: "D:/project",
+        initialState: {},
+      });
+
+      const turnId = hostTurnIdSchema.parse("turn-cmd-3");
+      const execResult = await session.commands.execute({
+        commandId: "///",
+        turnId,
+      });
+
+      expect(execResult.ok).toBe(false);
+      if (!execResult.ok) {
+        expect(execResult.error.code).toBe("invalidRequest");
+      }
+    });
+
+    it("rejects command execution when another turn is already active", async () => {
+      const transport = new MockKimiTransport();
+      transport.promptMock = vi.fn(
+        () => new Promise(() => {}), // hangs
+      );
+
+      const session = new KimiSession({
+        transport,
+        sessionId: "session-123",
+        cwd: "D:/project",
+        initialState: {},
+      });
+
+      // Start regular turn
+      const turn1Id = hostTurnIdSchema.parse("turn-active-1");
+      const start1 = await session.execute({
+        type: "turn.start",
+        turnId: turn1Id,
+        input: [{ type: "text", text: "Working..." }],
+      });
+      expect(start1.ok).toBe(true);
+
+      // Attempt to execute command while turn 1 is active
+      const turn2Id = hostTurnIdSchema.parse("turn-cmd-blocked");
+      const execResult = await session.commands.execute({
+        commandId: "compact",
+        turnId: turn2Id,
+      });
+      expect(execResult.ok).toBe(false);
+      if (!execResult.ok) {
+        expect(execResult.error.code).toBe("sessionBusy");
+      }
+    });
+
+    it("supports turn cancellation during command execution", async () => {
+      const transport = new MockKimiTransport();
+      let cancelCalled = false;
+      transport.promptMock = vi.fn(async () => {
+        await new Promise((r) => setTimeout(r, 50));
+        return { stopReason: "cancelled" };
+      });
+      transport.cancel = vi.fn(async () => {
+        cancelCalled = true;
+      });
+
+      const session = new KimiSession({
+        transport,
+        sessionId: "session-123",
+        cwd: "D:/project",
+        initialState: {},
+      });
+
+      const turnId = hostTurnIdSchema.parse("turn-cmd-cancel");
+      const execResult = await session.commands.execute({
+        commandId: "compact",
+        turnId,
+      });
+      expect(execResult.ok).toBe(true);
+
+      // Cancel turn
+      const cancelResult = await session.execute({
+        type: "turn.cancel",
+        turnId,
+      });
+      expect(cancelResult.ok).toBe(true);
+      expect(cancelCalled).toBe(true);
+
+      const outputs: HarnessOutput[] = [];
+      for await (const out of session.outputs) {
+        outputs.push(out);
+        if (out.kind === "event" && out.event.type === "turn.completed") break;
+      }
+
+      const completed = outputs.find(
+        (o) => o.kind === "event" && o.event.type === "turn.completed",
+      );
+      expect(completed).toBeDefined();
+      if (completed && completed.kind === "event" && completed.event.type === "turn.completed") {
+        expect(completed.event.outcome.status).toBe("cancelled");
+      }
     });
   });
 

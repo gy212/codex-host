@@ -37,4 +37,5 @@ export {
   type KimiSessionIndexEntry,
 } from "./history.js";
 export { parseKimiUsage } from "./projection.js";
+export { buildKimiCommandCatalog, formatKimiCommandPrompt } from "./slash-commands.js";
 export { createHarnessAdapter } from "./plugin.js";

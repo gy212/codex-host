@@ -44,10 +44,10 @@ import {
   type TurnStartCommand,
 } from "@codexhost/harness-adapter";
 import {
-  harnessCommandCatalogSchema,
   harnessIdSchema,
   harnessPermissionModeIdSchema,
   hostItemIdSchema,
+  type HarnessCommandCatalog,
   type HarnessId,
   type HostInteractionId,
   type HostTurnId,
@@ -81,6 +81,10 @@ import {
   projectKimiElicitationRequest,
   readAcpToolContentText,
 } from "./projection.js";
+import {
+  buildKimiCommandCatalog,
+  formatKimiCommandPrompt,
+} from "./slash-commands.js";
 
 const kimiHarnessId: HarnessId = harnessIdSchema.parse("kimi-code");
 const defaultNativeTurnFlushTimeoutMs = 6_000;
@@ -134,6 +138,7 @@ export interface KimiSessionOptions {
   kimiCodeHome?: string;
   readNativeSnapshot?: () => Promise<HostThreadSnapshot>;
   nativeTurnFlushTimeoutMs?: number;
+  onCommandsUpdate?: (catalog: HarnessCommandCatalog) => void;
 }
 
 export class KimiSession implements HarnessSession {
@@ -161,6 +166,7 @@ export class KimiSession implements HarnessSession {
   #activeTurnPromise: Promise<void> | null = null;
   #activeInteraction: ActiveInteraction | null = null;
   #availableCommands: AvailableCommand[] = [];
+  #onCommandsUpdate: ((catalog: HarnessCommandCatalog) => void) | undefined;
 
   constructor(options: KimiSessionOptions) {
     this.#transport = options.transport;
@@ -177,6 +183,7 @@ export class KimiSession implements HarnessSession {
         ...(options.homeDirectory ? { homeDirectory: options.homeDirectory } : {}),
         ...(options.kimiCodeHome ? { kimiCodeHome: options.kimiCodeHome } : {}),
       }));
+    this.#onCommandsUpdate = options.onCommandsUpdate;
     this.outputs = this.#channel.outputs;
     this.#transport.setSessionEventHandler((event) => this.#handleSessionEvent(event));
   }
@@ -223,27 +230,15 @@ export class KimiSession implements HarnessSession {
 
   get commands(): HarnessCommandCapability {
     return {
-      list: async () =>
-        ok(
-          harnessCommandCatalogSchema.parse({
-            commands: this.#availableCommands.map((command) => ({
-              id: command.name,
-              invocation: `/${command.name}`,
-              label: command.name,
-              argumentMode: command.input ? "text" as const : "none" as const,
-              ...(command.description.trim() ? { description: command.description } : {}),
-            })),
-          }),
-        ),
+      list: async () => ok(buildKimiCommandCatalog(this.#availableCommands)),
       execute: async (invocation: HarnessCommandInvocation) => {
-        const slashText = invocation.arguments && typeof invocation.arguments.text === "string"
-          ? `/${invocation.commandId} ${invocation.arguments.text}`
-          : `/${invocation.commandId}`;
+        const formatted = formatKimiCommandPrompt(invocation);
+        if (!formatted.ok) return formatted;
 
         const startAccepted = await this.execute({
           type: "turn.start",
           turnId: invocation.turnId,
-          input: [{ type: "text", text: slashText }],
+          input: [{ type: "text", text: formatted.value }],
         });
 
         if (!startAccepted.ok) return startAccepted;
@@ -370,6 +365,8 @@ export class KimiSession implements HarnessSession {
   }>): void {
     if (event.type === "commands.update") {
       this.#availableCommands = [...event.commands];
+      const catalog = buildKimiCommandCatalog(this.#availableCommands);
+      this.#onCommandsUpdate?.(catalog);
     } else if (event.type === "config.update") {
       this.#applyConfigOptions(event.configOptions);
     } else if (isKimiModeId(event.currentModeId)) {

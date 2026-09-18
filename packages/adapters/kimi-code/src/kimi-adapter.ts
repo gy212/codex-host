@@ -16,6 +16,7 @@ import {
   harnessIdSchema,
   harnessPermissionModeIdSchema,
   harnessThinkingOptionIdSchema,
+  type HarnessCommandCatalog,
   type HarnessId,
   type HarnessModelCatalog,
 } from "@codexhost/shared-contracts";
@@ -152,6 +153,11 @@ export class KimiAdapter implements HarnessAdapter {
   #sessions = new Set<KimiSession>();
   #inspectionCache: HarnessInspection | null = null;
   #closed = false;
+  #commandCatalog: HarnessCommandCatalog = { commands: [] };
+
+  get commandCatalog(): HarnessCommandCatalog {
+    return this.#commandCatalog;
+  }
 
   constructor(options: KimiAdapterOptions = {}, dependencies: KimiAdapterDependencies = {}) {
     this.#options = options;
@@ -347,6 +353,9 @@ export class KimiAdapter implements HarnessAdapter {
           contextWindowTokens,
           kimiCodeHome,
           ...(this.#options.homeDirectory ? { homeDirectory: this.#options.homeDirectory } : {}),
+          onCommandsUpdate: (catalog) => {
+            this.#commandCatalog = catalog;
+          },
         });
 
         this.#sessions.add(session);
@@ -407,6 +416,9 @@ export class KimiAdapter implements HarnessAdapter {
           contextWindowTokens,
           kimiCodeHome,
           ...(this.#options.homeDirectory ? { homeDirectory: this.#options.homeDirectory } : {}),
+          onCommandsUpdate: (catalog) => {
+            this.#commandCatalog = catalog;
+          },
         });
 
         this.#sessions.add(session);
@@ -478,6 +490,9 @@ export class KimiAdapter implements HarnessAdapter {
           contextWindowTokens,
           kimiCodeHome,
           ...(this.#options.homeDirectory ? { homeDirectory: this.#options.homeDirectory } : {}),
+          onCommandsUpdate: (catalog) => {
+            this.#commandCatalog = catalog;
+          },
         });
 
         this.#sessions.add(session);
@@ -666,6 +681,9 @@ export class KimiAdapter implements HarnessAdapter {
                   }),
               }
             : {}),
+          onCommandsUpdate: (catalog) => {
+            this.#commandCatalog = catalog;
+          },
         });
 
         this.#sessions.add(session);
@@ -688,6 +706,7 @@ export class KimiAdapter implements HarnessAdapter {
   async close(): Promise<void> {
     if (this.#closed) return;
     this.#closed = true;
+    this.#commandCatalog = { commands: [] };
 
     for (const session of this.#sessions) {
       await session.close().catch(() => undefined);
