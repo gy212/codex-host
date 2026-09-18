@@ -30,7 +30,7 @@ describe("slash-commands", () => {
         {
           name: "clear",
           description: "Clear terminal",
-          input: undefined,
+          input: null,
         },
         {
           name: "reset",
@@ -90,8 +90,8 @@ describe("slash-commands", () => {
       const catalog = buildKimiCommandCatalog(commands);
       expect(catalog.commands).toHaveLength(2);
       expect(catalog.commands.map((c) => c.id)).toEqual(["help", "doctor"]);
-      expect(catalog.commands[0].invocation).toBe("/help");
-      expect(catalog.commands[1].invocation).toBe("/doctor");
+      expect(catalog.commands[0]?.invocation).toBe("/help");
+      expect(catalog.commands[1]?.invocation).toBe("/doctor");
     });
 
     it("trims and bounds description to 512 characters, omitting empty description", () => {
@@ -109,8 +109,8 @@ describe("slash-commands", () => {
 
       const catalog = buildKimiCommandCatalog(commands);
       expect(catalog.commands).toHaveLength(2);
-      expect(catalog.commands[0].description).toBe("a".repeat(512));
-      expect(catalog.commands[1].description).toBeUndefined();
+      expect(catalog.commands[0]?.description).toBe("a".repeat(512));
+      expect(catalog.commands[1]?.description).toBeUndefined();
     });
 
     it("ignores commands with empty or invalid names", () => {
@@ -131,7 +131,7 @@ describe("slash-commands", () => {
 
       const catalog = buildKimiCommandCatalog(commands);
       expect(catalog.commands).toHaveLength(1);
-      expect(catalog.commands[0].id).toBe("valid-cmd.1:test");
+      expect(catalog.commands[0]?.id).toBe("valid-cmd.1:test");
     });
   });
 

@@ -700,3 +700,15 @@ live 模式只为这个受控测试批准 allow-once；features 模式仅为固�
 ## 18. 可直接交给实施 agent 的任务文本
 
 > 在当前 `kimi` 分支实施 Kimi Code Harness 接入。先完整阅读 `docs/harnesses/kimi-code/implementation-guide.md` 和随附 evidence，再阅读 codexhost-add-harness skill 及实际公共类型。当前目标是本机已安装的 Kimi Code 2.0.0；官方 Kimi SDK 0.1.8 已被探针证实启动不兼容，使用 `kimi acp` 与仓库现有 ACP SDK，按文档只读原生日志补齐历史、稳定轮次和真实终态。按步骤 A→D 完成后端、必要内容投影、预装和 Desktop 接线。保留原生能力和实际限制，不硬编码本机模型/用户路径，不改认证或默认配置，不新增 Kimi 专用 Host 路由，不伪造 Fork/Rollback/子 agent 支持。每阶段做与改动最相关的检查，失败修复后继续；不要只做文本回显后就称完成。所有最终声明必须有实现和对应验收依据。未经用户另行授权不 commit/push、不提交 upstream PR、不运行 npm start 重启当前 Desktop；确需真实 UI 启动时清楚说明当前阻塞和需要的动作。
+
+## 19. PR #12 契约修正（2026-09-18）
+
+当前实现使用 Kimi Code 2.0.0 ACP；以下限制同时体现在能力声明、公共接口和回归测试中。
+
+- **历史派生**：原生 ACP Fork 不接收历史边界，不能满足 Host checkpoint。关闭 `history.fork`、`rollbackLastTurn`，在创建 Transport 前返回 `unsupported`，不再修改原生 `wire.jsonl` / `state.json`，不发布无法兑现的 checkpoint。
+- **空历史和轮次关联**：`runtime.set_binding` / `profile.bind` 等元数据不会生成空白 `turn:0`。关联包含所有既有轮次，要求新轮次与本次输入匹配；缺失终态保持未知并明确失败，不将它改成成功。
+- **斜杠命令**：Kimi 的 `/status`、`/help` 不写入原生会话历史。Adapter 在原生 Session 目录内维护自己的 `codexhost-commands.jsonl`，保存实际输入、输出、终态和稳定 `turn:command:<Host Turn ID>` 身份；恢复时与原生历史按时间合并。该文件不进入模型上下文，也不替代或改写原生日志。持久化失败不能报告成功。未知目录命令在执行前拒绝；命令输出先收齐，再格式化为 Markdown，避免分块破坏格式。
+- **取消与故障**：取消请求不再触发 500ms 的伪造终态，等待真实 ACP prompt 响应。发送失败返回类型化错误；原生退出时先结束工具和 Turn，再发布唯一 Session fault 并结束输出流。
+- **配置和执行策略**：完整配置响应会清除已不存在的 effective 字段；无效模型、权限、跨 Harness Native Ref 在产生会话副作用前拒绝。`unattended-full-access` 尚未验证原生 Question/Plan 等价语义，因此明确返回 `unsupported`，不静默按普通交互模式执行。
+
+本次原生验证：Windows Kimi 2.0.0 新建空会话、连续 `/status` / `/help`、关闭并恢复同一会话、命令历史身份保持一致、普通模型回复及原生 `turn:0` 成功。取消延迟、取消发送失败、进程退出时的事件顺序由定向 Transport/Session 回归覆盖。未重启正在使用的 Desktop，未把真实 Desktop UI 全流程标为已验收。

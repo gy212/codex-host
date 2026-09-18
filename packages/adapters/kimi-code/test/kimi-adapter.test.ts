@@ -1,4 +1,4 @@
-import { mkdtemp, mkdir, readFile, rm, writeFile } from "node:fs/promises";
+import { mkdtemp, mkdir, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -188,137 +188,13 @@ effort = "medium"
   });
 
   describe("open()", () => {
-    it("forks existing session and returns distinct native session", async () => {
-      const sessionId = "s-1";
-      const sessionDir = path.join(tempDir, ".kimi-code", "sessions", sessionId);
-      await mkdir(path.join(sessionDir, "agents", "main"), { recursive: true });
-      await writeFile(
-        path.join(tempDir, ".kimi-code", "session_index.jsonl"),
-        JSON.stringify({ sessionId, sessionDir, workDir: tempDir }) + "\n",
-        "utf8",
-      );
-      await writeFile(
-        path.join(sessionDir, "state.json"),
-        JSON.stringify({ id: sessionId, version: 2, cwd: tempDir }),
-        "utf8",
-      );
 
-      const adapter = new KimiAdapter(
-        { homeDirectory: tempDir },
-        {
-          resolveExecutable: () => "kimi",
-          createTransport: () => fakeTransport,
-        },
-      );
 
-      const result = await adapter.open({
-        kind: "fork",
-        sourceRef: { formatVersion: 1, harnessId: harnessIdSchema.parse("kimi-code"), nativeSessionId: sessionId },
-        checkpoint: { formatVersion: 1, harnessId: harnessIdSchema.parse("kimi-code"), nativeSessionId: sessionId, checkpointId: "turn:0" },
-        cwd: tempDir,
-      });
 
-      expect(result.ok).toBe(true);
-      if (result.ok) {
-        expect(result.value.initialState.nativeRef?.nativeSessionId).toBe("session-forked-123");
-        expect(fakeTransport.openKinds).toContain("fork");
-      }
-    });
 
-    it("rejects fork when source session does not exist", async () => {
-      const adapter = new KimiAdapter(
-        { homeDirectory: tempDir },
-        {
-          resolveExecutable: () => "kimi",
-          createTransport: () => fakeTransport,
-        },
-      );
-      const result = await adapter.open({
-        kind: "fork",
-        sourceRef: { formatVersion: 1, harnessId: harnessIdSchema.parse("kimi-code"), nativeSessionId: "non-existent" },
-        checkpoint: { formatVersion: 1, harnessId: harnessIdSchema.parse("kimi-code"), nativeSessionId: "non-existent", checkpointId: "turn:0" },
-        cwd: tempDir,
-      });
 
-      expect(result.ok).toBe(false);
-      if (!result.ok) {
-        expect(result.error.code).toBe("sessionNotFound");
-      }
-    });
 
-    it("rejects fork when checkpoint does not belong to source session", async () => {
-      const sessionId = "s-checkpoint-test";
-      const sessionDir = path.join(tempDir, ".kimi-code", "sessions", sessionId);
-      await mkdir(path.join(sessionDir, "agents", "main"), { recursive: true });
-      await writeFile(
-        path.join(tempDir, ".kimi-code", "session_index.jsonl"),
-        JSON.stringify({ sessionId, sessionDir, workDir: tempDir }) + "\n",
-        "utf8",
-      );
-      await writeFile(
-        path.join(sessionDir, "state.json"),
-        JSON.stringify({ id: sessionId, version: 2, cwd: tempDir }),
-        "utf8",
-      );
 
-      const adapter = new KimiAdapter(
-        { homeDirectory: tempDir },
-        {
-          resolveExecutable: () => "kimi",
-          createTransport: () => fakeTransport,
-        },
-      );
-      const result = await adapter.open({
-        kind: "fork",
-        sourceRef: { formatVersion: 1, harnessId: harnessIdSchema.parse("kimi-code"), nativeSessionId: sessionId },
-        checkpoint: { formatVersion: 1, harnessId: harnessIdSchema.parse("kimi-code"), nativeSessionId: "other-session", checkpointId: "turn:0" },
-        cwd: tempDir,
-      });
-
-      expect(result.ok).toBe(false);
-      if (!result.ok) {
-        expect(result.error.code).toBe("checkpointNotFound");
-      }
-    });
-
-    it("rejects fork across different working directory", async () => {
-      const sessionId = "s-cross-cwd";
-      const sessionDir = path.join(tempDir, ".kimi-code", "sessions", sessionId);
-      await mkdir(path.join(sessionDir, "agents", "main"), { recursive: true });
-      await writeFile(
-        path.join(tempDir, ".kimi-code", "session_index.jsonl"),
-        JSON.stringify({ sessionId, sessionDir, workDir: tempDir }) + "\n",
-        "utf8",
-      );
-      await writeFile(
-        path.join(sessionDir, "state.json"),
-        JSON.stringify({ id: sessionId, version: 2, cwd: tempDir }),
-        "utf8",
-      );
-
-      const adapter = new KimiAdapter(
-        { homeDirectory: tempDir },
-        {
-          resolveExecutable: () => "kimi",
-          createTransport: () => fakeTransport,
-        },
-      );
-      const otherCwd = path.join(tempDir, "other-worktree");
-      await mkdir(otherCwd, { recursive: true });
-
-      const result = await adapter.open({
-        kind: "fork",
-        sourceRef: { formatVersion: 1, harnessId: harnessIdSchema.parse("kimi-code"), nativeSessionId: sessionId },
-        checkpoint: { formatVersion: 1, harnessId: harnessIdSchema.parse("kimi-code"), nativeSessionId: sessionId, checkpointId: "turn:0" },
-        cwd: otherCwd,
-      });
-
-      expect(result.ok).toBe(false);
-      if (!result.ok) {
-        expect(result.error.code).toBe("unsupported");
-        expect(result.error.message).toContain("different working directories");
-      }
-    });
 
 
     it("creates new session and applies options", async () => {
@@ -506,224 +382,11 @@ effort = "medium"
       expect(fakeTransport.close).toHaveBeenCalled();
     });
 
-    it("rolls back 1-turn session to empty created session", async () => {
-      const sourceSessionId = "source-1-turn";
-      const sessionDir = path.join(tempDir, ".kimi-code", "sessions", sourceSessionId);
-      await mkdir(path.join(sessionDir, "agents", "main"), { recursive: true });
-      await writeFile(
-        path.join(tempDir, ".kimi-code", "session_index.jsonl"),
-        JSON.stringify({ sessionId: sourceSessionId, sessionDir }) + "\n",
-      );
-      await writeFile(
-        path.join(sessionDir, "state.json"),
-        JSON.stringify({ id: sourceSessionId, version: 2, cwd: tempDir }),
-      );
 
-      const adapter = new KimiAdapter(
-        { homeDirectory: tempDir },
-        {
-          resolveExecutable: () => "kimi",
-          createTransport: () => fakeTransport,
-          readSessionSnapshot: async (sessionId: string) => {
-            if (sessionId === sourceSessionId) {
-              return {
-                turns: [
-                  {
-                    nativeTurnRef: {
-                      formatVersion: 1,
-                      harnessId: harnessIdSchema.parse("kimi-code"),
-                      nativeSessionId: sourceSessionId,
-                      nativeTurnKey: "turn:0",
-                    },
-                    checkpoint: {
-                      formatVersion: 1,
-                      harnessId: harnessIdSchema.parse("kimi-code"),
-                      nativeSessionId: sourceSessionId,
-                      nativeTurnKey: "turn:0",
-                    },
-                    input: [{ type: "text", text: "hello" }],
-                    items: [],
-                    outcome: { status: "succeeded" },
-                  },
-                ],
-              };
-            }
-            return { turns: [] };
-          },
-        },
-      );
 
-      const result = await adapter.open({
-        kind: "rollbackLastTurn",
-        sourceRef: {
-          formatVersion: 1,
-          harnessId: harnessIdSchema.parse("kimi-code"),
-          nativeSessionId: sourceSessionId,
-        },
-        cwd: tempDir,
-      });
 
-      expect(result.ok).toBe(true);
-      expect(fakeTransport.openKinds).toContain("create");
-      if (result.ok) {
-        const snapshot = await result.value.readSnapshot();
-        expect(snapshot.ok).toBe(true);
-        if (snapshot.ok) {
-          expect(snapshot.value.turns).toHaveLength(0);
-        }
-      }
-    });
 
-    it("rolls back multi-turn session by forking and truncating wire log", async () => {
-      const sourceSessionId = "source-multi-turn";
-      const sourceDir = path.join(tempDir, ".kimi-code", "sessions", sourceSessionId);
-      const forkedSessionId = "session-forked-123";
-      const forkedDir = path.join(tempDir, ".kimi-code", "sessions", forkedSessionId);
 
-      await mkdir(path.join(sourceDir, "agents", "main"), { recursive: true });
-      await mkdir(path.join(forkedDir, "agents", "main"), { recursive: true });
-
-      const indexContent = [
-        JSON.stringify({ sessionId: sourceSessionId, sessionDir: sourceDir }),
-        JSON.stringify({ sessionId: forkedSessionId, sessionDir: forkedDir }),
-      ].join("\n") + "\n";
-      await writeFile(path.join(tempDir, ".kimi-code", "session_index.jsonl"), indexContent);
-
-      await writeFile(
-        path.join(sourceDir, "state.json"),
-        JSON.stringify({ id: sourceSessionId, version: 2, cwd: tempDir }),
-      );
-      await writeFile(
-        path.join(forkedDir, "state.json"),
-        JSON.stringify({ id: forkedSessionId, version: 2, cwd: tempDir, lastPrompt: "turn 2" }),
-      );
-
-      const wireLines = [
-        JSON.stringify({ type: "turn.prompt", turnId: 0, input: [{ type: "text", text: "turn 1" }] }),
-        JSON.stringify({ type: "turn.ended", turnId: 0 }),
-        JSON.stringify({ type: "prompt.completed", turnId: 0, reason: "completed" }),
-        JSON.stringify({ type: "turn.prompt", turnId: 1, input: [{ type: "text", text: "turn 2" }] }),
-        JSON.stringify({ type: "turn.ended", turnId: 1 }),
-      ];
-      await writeFile(path.join(forkedDir, "agents", "main", "wire.jsonl"), wireLines.join("\n") + "\n");
-
-      const adapter = new KimiAdapter(
-        { homeDirectory: tempDir },
-        {
-          resolveExecutable: () => "kimi",
-          createTransport: () => fakeTransport,
-          readSessionSnapshot: async (sessionId: string) => {
-            if (sessionId === sourceSessionId) {
-              return {
-                turns: [
-                  {
-                    nativeTurnRef: {
-                      formatVersion: 1,
-                      harnessId: harnessIdSchema.parse("kimi-code"),
-                      nativeSessionId: sourceSessionId,
-                      nativeTurnKey: "turn:0",
-                    },
-                    checkpoint: {
-                      formatVersion: 1,
-                      harnessId: harnessIdSchema.parse("kimi-code"),
-                      nativeSessionId: sourceSessionId,
-                      nativeTurnKey: "turn:0",
-                    },
-                    input: [{ type: "text", text: "turn 1" }],
-                    items: [],
-                    outcome: { status: "succeeded" },
-                  },
-                  {
-                    nativeTurnRef: {
-                      formatVersion: 1,
-                      harnessId: harnessIdSchema.parse("kimi-code"),
-                      nativeSessionId: sourceSessionId,
-                      nativeTurnKey: "turn:1",
-                    },
-                    checkpoint: {
-                      formatVersion: 1,
-                      harnessId: harnessIdSchema.parse("kimi-code"),
-                      nativeSessionId: sourceSessionId,
-                      nativeTurnKey: "turn:1",
-                    },
-                    input: [{ type: "text", text: "turn 2" }],
-                    items: [],
-                    outcome: { status: "succeeded" },
-                  },
-                ],
-              };
-            }
-            return {
-              turns: [
-                {
-                  nativeTurnRef: {
-                    formatVersion: 1,
-                    harnessId: harnessIdSchema.parse("kimi-code"),
-                    nativeSessionId: sessionId,
-                    nativeTurnKey: "turn:0",
-                  },
-                  checkpoint: {
-                    formatVersion: 1,
-                    harnessId: harnessIdSchema.parse("kimi-code"),
-                    nativeSessionId: sessionId,
-                    nativeTurnKey: "turn:0",
-                  },
-                  input: [{ type: "text", text: "turn 1" }],
-                  items: [],
-                  outcome: { status: "succeeded" },
-                },
-              ],
-            };
-          },
-        },
-      );
-
-      const result = await adapter.open({
-        kind: "rollbackLastTurn",
-        sourceRef: {
-          formatVersion: 1,
-          harnessId: harnessIdSchema.parse("kimi-code"),
-          nativeSessionId: sourceSessionId,
-        },
-        cwd: tempDir,
-      });
-
-      expect(result.ok).toBe(true);
-      expect(fakeTransport.openKinds).toContain("fork");
-      expect(fakeTransport.openKinds).toContain("load");
-
-      // Check truncated wire log on disk
-      const truncatedWire = await readFile(path.join(forkedDir, "agents", "main", "wire.jsonl"), "utf8");
-      expect(truncatedWire.split("\n").filter(Boolean)).toHaveLength(3);
-    });
-
-    it("returns sessionNotFound when rolling back non-existent session", async () => {
-      await mkdir(path.join(tempDir, ".kimi-code"), { recursive: true });
-      await writeFile(path.join(tempDir, ".kimi-code", "session_index.jsonl"), "");
-
-      const adapter = new KimiAdapter(
-        { homeDirectory: tempDir },
-        {
-          resolveExecutable: () => "kimi",
-          createTransport: () => fakeTransport,
-        },
-      );
-
-      const result = await adapter.open({
-        kind: "rollbackLastTurn",
-        sourceRef: {
-          formatVersion: 1,
-          harnessId: harnessIdSchema.parse("kimi-code"),
-          nativeSessionId: "missing-source",
-        },
-        cwd: tempDir,
-      });
-
-      expect(result.ok).toBe(false);
-      if (!result.ok) {
-        expect(result.error.code).toBe("sessionNotFound");
-      }
-    });
   });
 
   describe("commandCatalog", () => {
@@ -788,9 +451,9 @@ effort = "medium"
 
       expect(adapter.commandCatalog.commands).toHaveLength(3);
       expect(adapter.commandCatalog.commands.map((c) => c.id)).toEqual(["compact", "clear", "export"]);
-      expect(adapter.commandCatalog.commands[1].invocation).toBe("/clear");
-      expect(adapter.commandCatalog.commands[1].argumentMode).toBe("none");
-      expect(adapter.commandCatalog.commands[2].argumentMode).toBe("text");
+      expect(adapter.commandCatalog.commands[1]?.invocation).toBe("/clear");
+      expect(adapter.commandCatalog.commands[1]?.argumentMode).toBe("none");
+      expect(adapter.commandCatalog.commands[2]?.argumentMode).toBe("text");
     });
 
     it("resets commandCatalog to default catalog upon adapter.close()", async () => {

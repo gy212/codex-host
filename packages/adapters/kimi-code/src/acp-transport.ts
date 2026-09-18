@@ -357,8 +357,6 @@ export class KimiAcpTransport {
     }
   }
 
-  #activePromptCancel: (() => void) | undefined;
-
   async prompt(
     text: string,
     handler: ActivePromptHandler,
@@ -370,21 +368,8 @@ export class KimiAcpTransport {
     }
 
     this.#activePrompt = handler;
-    let cancelTimer: NodeJS.Timeout | undefined;
-    const cancelPromise = new Promise<PromptResponse>((resolve) => {
-      this.#activePromptCancel = () => {
-        cancelTimer = setTimeout(() => resolve({ stopReason: "cancelled" }), 500);
-      };
-    });
-
     try {
-      return await Promise.race([
-        connection.prompt({
-          sessionId,
-          prompt: [{ type: "text", text }],
-        }),
-        cancelPromise,
-      ]);
+      return await connection.prompt({ sessionId, prompt: [{ type: "text", text }] });
     } catch (error) {
       throw new KimiTransportError(
         "unavailable",
@@ -392,8 +377,6 @@ export class KimiAcpTransport {
         { cause: error },
       );
     } finally {
-      if (cancelTimer) clearTimeout(cancelTimer);
-      this.#activePromptCancel = undefined;
       if (this.#activePrompt === handler) {
         this.#activePrompt = null;
       }
@@ -403,17 +386,10 @@ export class KimiAcpTransport {
   async cancel(): Promise<void> {
     const connection = this.#connection;
     const sessionId = this.#sessionId;
-    if (!connection || !sessionId || this.#closed) return;
-
-    if (this.#activePromptCancel) {
-      this.#activePromptCancel();
+    if (!connection || !sessionId || this.#closed) {
+      throw new KimiTransportError("unavailable", "Kimi ACP session is not available");
     }
-
-    try {
-      await connection.cancel({ sessionId });
-    } catch {
-      // Cancellation is best effort
-    }
+    await connection.cancel({ sessionId });
   }
 
   async close(): Promise<void> {

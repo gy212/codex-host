@@ -267,6 +267,10 @@ export class KimiToolCallAccumulator {
     return this.calls.get(toolCallId);
   }
 
+  values(): IterableIterator<ToolCallAccumulatorState> {
+    return this.calls.values();
+  }
+
   delete(toolCallId: string): boolean {
     return this.calls.delete(toolCallId);
   }

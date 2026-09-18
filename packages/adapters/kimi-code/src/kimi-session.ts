@@ -24,6 +24,7 @@ import {
   type HostApprovalInteraction,
   type HostCommand,
   type HostItemOutcome,
+  type HostItemSnapshot,
   type HostQuestionInteraction,
   type HostReasoningItem,
   type HostThreadSnapshot,
@@ -60,8 +61,10 @@ import type {
   KimiTransportError,
 } from "./acp-transport.js";
 import type { KimiAcpTransportLike } from "./kimi-adapter.js";
+import { appendKimiCommandHistory, readKimiCommandHistory } from "./command-history.js";
 import {
   createKimiNativeSessionRef,
+  createKimiNativeTurnRef,
   readKimiSessionSnapshot,
   readKimiSessionUsage,
 } from "./history.js";
@@ -101,9 +104,9 @@ export const kimiSessionCapabilities: HarnessSessionCapabilities = {
     permissionModeScope: "live",
   },
   history: {
-    fork: true,
+    fork: false,
     forkAcrossCwd: false,
-    rollbackLastTurn: true,
+    rollbackLastTurn: false,
   },
   subagents: {
     observe: false,
@@ -162,6 +165,7 @@ export class KimiSession implements HarnessSession {
   #nativeTurnFlushTimeoutMs: number;
   #closed = false;
   #faulted = false;
+  #transportFault: KimiTransportError | null = null;
   #activeTurn: {
     turnId: HostTurnId;
     cancellationRequested: boolean;
@@ -235,6 +239,10 @@ export class KimiSession implements HarnessSession {
     return {
       list: async () => ok(buildKimiCommandCatalog(this.#availableCommands)),
       execute: async (invocation: HarnessCommandInvocation) => {
+        const commandId = invocation.commandId.trim().replace(/^\/+/, "");
+        if (!this.#availableCommands.some((command) => command.name.trim().replace(/^\/+/, "") === commandId)) {
+          return err("invalidRequest", `Unknown Kimi command: ${invocation.commandId}`);
+        }
         const formatted = formatKimiCommandPrompt(invocation);
         if (!formatted.ok) return formatted;
 
@@ -256,8 +264,13 @@ export class KimiSession implements HarnessSession {
     }
     try {
       const snapshot = await this.#readNativeSnapshot();
+      const commands = await readKimiCommandHistory(this.#sessionId, {
+        ...(this.#homeDirectory ? { homeDirectory: this.#homeDirectory } : {}),
+        ...(this.#kimiCodeHome ? { kimiCodeHome: this.#kimiCodeHome } : {}),
+      });
       return ok({
         ...snapshot,
+        turns: [...snapshot.turns, ...commands].sort((a, b) => (a.startedAtMs ?? 0) - (b.startedAtMs ?? 0)),
         state: { ...this.#state },
       });
     } catch (error) {
@@ -335,7 +348,14 @@ export class KimiSession implements HarnessSession {
   handleTransportFault(error: KimiTransportError): void {
     if (this.#closed || this.#faulted) return;
     this.#faulted = true;
+    this.#transportFault = error;
     this.#closeActiveInteraction("cancelled");
+    void this.#finishTransportFault(error);
+  }
+
+  async #finishTransportFault(error: KimiTransportError): Promise<void> {
+    await this.#transport.close().catch(() => undefined);
+    await this.#activeTurnPromise?.catch(() => undefined);
     this.#channel.emit({
       kind: "event",
       event: {
@@ -348,15 +368,19 @@ export class KimiSession implements HarnessSession {
         },
       },
     });
+    this.#channel.end();
   }
 
   #applyConfigOptions(configOptions: unknown[]): void {
     const effective = readKimiEffectiveConfig(configOptions);
-    if (effective.modelAlias) this.#state.effectiveModel = encodeKimiModelRef(effective.modelAlias);
-    if (effective.thinkingOptionId) this.#state.effectiveThinkingOptionId = effective.thinkingOptionId;
-    if (effective.permissionModeId) {
-      this.#state.effectivePermissionModeId = harnessPermissionModeIdSchema.parse(effective.permissionModeId);
-    }
+    const state = { ...this.#state };
+    delete state.effectiveModel;
+    delete state.effectiveThinkingOptionId;
+    delete state.effectivePermissionModeId;
+    if (effective.modelAlias) state.effectiveModel = encodeKimiModelRef(effective.modelAlias);
+    if (effective.thinkingOptionId) state.effectiveThinkingOptionId = effective.thinkingOptionId;
+    if (effective.permissionModeId) state.effectivePermissionModeId = harnessPermissionModeIdSchema.parse(effective.permissionModeId);
+    this.#state = state;
     this.#channel.emit({
       kind: "event",
       event: { type: "session.state.changed", state: { ...this.#state } },
@@ -386,6 +410,9 @@ export class KimiSession implements HarnessSession {
     if (this.#activeTurn) {
       return err("sessionBusy", "Another turn is already in progress");
     }
+    if (!command.input.some((input) => input.text.trim())) {
+      return err("invalidRequest", "Kimi prompt cannot be empty");
+    }
 
     const turnId = command.turnId;
     this.#activeTurn = {
@@ -401,10 +428,17 @@ export class KimiSession implements HarnessSession {
 
   async #runTurn(command: TurnStartCommand): Promise<void> {
     const turnId = command.turnId;
+    const startedAtMs = Date.now();
     this.#channel.emit({ kind: "event", event: { type: "turn.started", turnId } });
 
     const inputText = command.input.map((i) => i.text).join("\n");
     const isCommandTurn = inputText.trim().startsWith("/");
+    let commandOutput = "";
+    const completedItems: HostItemSnapshot[] = [];
+    const completeItem = (snapshot: HostItemSnapshot) => {
+      completedItems.push(snapshot);
+      this.#channel.emit({ kind: "event", event: { type: "item.completed", turnId, snapshot } });
+    };
     const accumulator = new KimiToolCallAccumulator();
     let previousNativeTurnKeys: Set<string> | null = null;
     let identityError: Error | null = null;
@@ -412,7 +446,6 @@ export class KimiSession implements HarnessSession {
     try {
       previousNativeTurnKeys = new Set(
         (await this.#readNativeTurns())
-          .filter((turn) => turn.outcome.status !== "unknown")
           .map((turn) => turn.nativeTurnRef.nativeTurnKey),
       );
     } catch (error) {
@@ -464,14 +497,7 @@ export class KimiSession implements HarnessSession {
             itemId: currentReasoning.itemId,
             text: currentReasoning.text,
           };
-          this.#channel.emit({
-            kind: "event",
-            event: {
-              type: "item.completed",
-              turnId,
-              snapshot: { item, outcome: { status: "succeeded" } },
-            },
-          });
+          completeItem({ item, outcome: { status: "succeeded" } });
         }
         currentReasoning = null;
       }
@@ -520,29 +546,20 @@ export class KimiSession implements HarnessSession {
           text: currentAgentMessage.text,
           ...(resolvedPhase ? { phase: resolvedPhase } : {}),
         };
-        this.#channel.emit({
-          kind: "event",
-          event: {
-            type: "item.completed",
-            turnId,
-            snapshot: { item, outcome: { status: "succeeded" } },
-          },
-        });
+        completeItem({ item, outcome: { status: "succeeded" } });
         currentAgentMessage = null;
       }
     };
 
     const handler: ActivePromptHandler = {
       onEvent: (event: KimiTransportEvent) => {
-        if (this.#closed) return;
+        if (this.#closed || this.#faulted || this.#activeTurn?.turnId !== turnId) return;
 
         switch (event.type) {
           case "agent.text": {
             completeReasoning();
-            const textToAppend = isCommandTurn
-              ? formatKimiCommandOutput(event.text)
-              : stripAnsi(event.text);
-            appendAgentText(textToAppend);
+            if (isCommandTurn) commandOutput += event.text;
+            else appendAgentText(stripAnsi(event.text));
             break;
           }
           case "agent.thought": {
@@ -610,14 +627,7 @@ export class KimiSession implements HarnessSession {
                 ? { status: "succeeded" }
                 : { status: "failed", error: { code: "nativeFailure", message: "Tool execution failed", retryable: false } };
 
-              this.#channel.emit({
-                kind: "event",
-                event: {
-                  type: "item.completed",
-                  turnId,
-                  snapshot: { item, outcome },
-                },
-              });
+              completeItem({ item, outcome });
             }
             break;
           }
@@ -695,25 +705,69 @@ export class KimiSession implements HarnessSession {
     let promptError: Error | null = null;
 
     try {
-      promptResponse = await this.#transport.prompt(inputText, handler);
+      if (this.#closed || this.#activeTurn?.cancellationRequested) {
+        promptResponse = { stopReason: "cancelled" };
+      } else if (this.#transportFault) {
+        throw this.#transportFault;
+      } else {
+        promptResponse = await this.#transport.prompt(inputText, handler);
+      }
     } catch (error) {
       promptError = error instanceof Error ? error : new Error(String(error));
     }
 
     this.#closeActiveInteraction("cancelled");
 
+    for (const state of accumulator.values()) {
+      if (state.status === "completed" || state.status === "failed") continue;
+      state.status = "failed";
+      if (!state.itemStartedEmitted) {
+        state.itemStartedEmitted = true;
+        this.#channel.emit({ kind: "event", event: { type: "item.started", turnId, item: createHostItemFromToolState(state, this.#cwd) } });
+      }
+      completeItem({
+            item: createHostItemFromToolState(state, this.#cwd),
+            outcome: { status: "failed", error: { code: "nativeFailure", message: promptError?.message ?? "Tool execution did not complete", retryable: false } },
+      });
+    }
+
     // Complete any open reasoning or message items immediately
     completeReasoning();
+    if (isCommandTurn) appendAgentText(formatKimiCommandOutput(commandOutput));
     completeAgentMessage(hasHadToolCallsInTurn ? "final_answer" : undefined);
 
     let currentNativeTurn: HostTurnSnapshot | null = null;
-    if (this.#activeTurn?.cancellationRequested) {
+    if (isCommandTurn) {
+      const outcome: TurnOutcome = promptError
+        ? { status: "failed", error: { code: "nativeFailure", message: promptError.message, retryable: false } }
+        : promptResponse?.stopReason === "cancelled"
+          ? { status: "cancelled", reason: "Native command cancelled" }
+          : { status: "succeeded" };
+      const commandTurn: HostTurnSnapshot = {
+        nativeTurnRef: createKimiNativeTurnRef(this.#sessionId, `command:${turnId}`),
+        input: command.input,
+        items: completedItems,
+        outcome,
+        startedAtMs,
+        completedAtMs: Date.now(),
+      };
+      try {
+        await appendKimiCommandHistory(commandTurn, {
+          ...(this.#homeDirectory ? { homeDirectory: this.#homeDirectory } : {}),
+          ...(this.#kimiCodeHome ? { kimiCodeHome: this.#kimiCodeHome } : {}),
+        });
+        currentNativeTurn = commandTurn;
+      } catch (error) {
+        identityError = error instanceof Error ? error : new Error(String(error));
+      }
+    } else if (this.#activeTurn?.cancellationRequested) {
       try {
         if (previousNativeTurnKeys) {
           const quickTurns = (await this.#readNativeTurns()).filter(
-            (turn) => !previousNativeTurnKeys.has(turn.nativeTurnRef.nativeTurnKey),
+            (turn) => !previousNativeTurnKeys.has(turn.nativeTurnRef.nativeTurnKey) &&
+              turn.input.map((input) => input.text).join("\n").trim() === inputText.trim(),
           );
-          currentNativeTurn = quickTurns[0] ?? null;
+          currentNativeTurn = quickTurns.length === 1 ? quickTurns[0] ?? null : null;
         }
       } catch {
         // Non-blocking quick check
@@ -722,25 +776,6 @@ export class KimiSession implements HarnessSession {
       const correlated = await this.#waitForNativeTurn(previousNativeTurnKeys, inputText);
       currentNativeTurn = correlated.turn;
       identityError = correlated.error;
-    }
-
-    if (!currentNativeTurn && !this.#activeTurn?.cancellationRequested && !promptError) {
-      try {
-        const added = (await this.#readNativeTurns()).filter(
-          (turn) => !previousNativeTurnKeys || !previousNativeTurnKeys.has(turn.nativeTurnRef.nativeTurnKey),
-        );
-        const matching = added.filter(
-          (turn) => turn.input.map((input) => input.text).join("\n").trim() === inputText.trim(),
-        );
-        const candidate = matching[0] ?? (added.length === 1 ? added[0] : null);
-        if (candidate) {
-          currentNativeTurn = candidate.outcome.status !== "unknown"
-            ? candidate
-            : { ...candidate, outcome: { status: "succeeded" } };
-        }
-      } catch {
-        // Non-blocking fallback
-      }
     }
 
     if (currentNativeTurn) {
@@ -772,7 +807,6 @@ export class KimiSession implements HarnessSession {
     // Determine Turn Outcome
     let turnOutcome: TurnOutcome;
     if (
-      this.#activeTurn?.cancellationRequested ||
       promptResponse?.stopReason === "cancelled" ||
       currentNativeTurn?.outcome.status === "cancelled"
     ) {
@@ -799,6 +833,15 @@ export class KimiSession implements HarnessSession {
         error: {
           code: "protocolError",
           message: identityError?.message ?? "Kimi did not persist a unique Native Turn identity",
+          retryable: false,
+        },
+      };
+    } else if (currentNativeTurn.outcome.status === "unknown") {
+      turnOutcome = {
+        status: "failed",
+        error: {
+          code: "protocolError",
+          message: currentNativeTurn.outcome.reason,
           retryable: false,
         },
       };
@@ -846,7 +889,7 @@ export class KimiSession implements HarnessSession {
             error: new Error("Multiple Native Turns appeared while correlating the Kimi prompt"),
           };
         }
-        const turn = matching[0] ?? (added.length === 1 ? added[0] : null);
+        const turn = matching[0];
         if (turn) {
           lastCandidateTurn = turn;
           if (turn.outcome.status !== "unknown") return { turn, error: null };
@@ -861,7 +904,7 @@ export class KimiSession implements HarnessSession {
 
     if (lastCandidateTurn) {
       return {
-        turn: { ...lastCandidateTurn, outcome: { status: "succeeded" } },
+        turn: lastCandidateTurn,
         error: null,
       };
     }
@@ -898,7 +941,12 @@ export class KimiSession implements HarnessSession {
     }
 
     this.#activeTurn.cancellationRequested = true;
-    await this.#transport.cancel();
+    try {
+      await this.#transport.cancel();
+    } catch (error) {
+      if (this.#activeTurn?.turnId === command.turnId) this.#activeTurn.cancellationRequested = false;
+      return err("unavailable", `Kimi cancellation failed: ${error instanceof Error ? error.message : String(error)}`, true);
+    }
 
     if (this.#activeInteraction) {
       const interaction = this.#activeInteraction;

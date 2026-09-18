@@ -99,8 +99,8 @@ describe("KimiSession", () => {
 
     expect(session.harnessId).toBe("kimi-code");
     expect(session.capabilities.configuration.selectModel).toBe(true);
-    expect(session.capabilities.history.fork).toBe(true);
-    expect(session.capabilities.history.rollbackLastTurn).toBe(true);
+    expect(session.capabilities.history.fork).toBe(false);
+    expect(session.capabilities.history.rollbackLastTurn).toBe(false);
     expect(session.initialState.effectivePermissionModeId).toBe("default");
     expect(session.nativeSessionRef.nativeSessionId).toBe("session-123");
     expect(session.nativeSessionRef.locator).toEqual({ cwd: "D:/project" });
@@ -454,7 +454,7 @@ describe("KimiSession", () => {
       }
     });
 
-    it("recovers gracefully when a native turn exists on disk but final record was delayed", async () => {
+    it("does not reuse an incomplete native turn that predates the prompt", async () => {
       const transport = new MockKimiTransport();
       const session = new KimiSession({
         transport,
@@ -482,8 +482,8 @@ describe("KimiSession", () => {
 
       for await (const output of session.outputs) {
         if (output.kind !== "event" || output.event.type !== "turn.completed") continue;
-        expect(output.event.outcome.status).toBe("succeeded");
-        expect(output.event.nativeTurnRef?.nativeTurnKey).toBe("turn:0");
+        expect(output.event.outcome.status).toBe("failed");
+        expect(output.event.nativeTurnRef).toBeUndefined();
         break;
       }
     });
