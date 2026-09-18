@@ -56,6 +56,7 @@ import {
   KimiSession,
   kimiSessionCapabilities,
 } from "./kimi-session.js";
+import { KIMI_DEFAULT_COMMAND_CATALOG } from "./slash-commands.js";
 
 const kimiHarnessId: HarnessId = harnessIdSchema.parse("kimi-code");
 
@@ -153,7 +154,7 @@ export class KimiAdapter implements HarnessAdapter {
   #sessions = new Set<KimiSession>();
   #inspectionCache: HarnessInspection | null = null;
   #closed = false;
-  #commandCatalog: HarnessCommandCatalog = { commands: [] };
+  #commandCatalog: HarnessCommandCatalog = KIMI_DEFAULT_COMMAND_CATALOG;
 
   get commandCatalog(): HarnessCommandCatalog {
     return this.#commandCatalog;
@@ -706,7 +707,7 @@ export class KimiAdapter implements HarnessAdapter {
   async close(): Promise<void> {
     if (this.#closed) return;
     this.#closed = true;
-    this.#commandCatalog = { commands: [] };
+    this.#commandCatalog = KIMI_DEFAULT_COMMAND_CATALOG;
 
     for (const session of this.#sessions) {
       await session.close().catch(() => undefined);

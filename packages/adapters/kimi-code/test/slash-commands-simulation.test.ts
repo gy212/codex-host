@@ -19,6 +19,7 @@ import { KimiSession } from "../src/kimi-session.js";
 import { createKimiNativeTurnRef } from "../src/history.js";
 import type { ActivePromptHandler, SessionEventHandler } from "../src/acp-transport.js";
 import { resolveKimiExecutable } from "../src/command.js";
+import { KIMI_DEFAULT_COMMAND_CATALOG } from "../src/slash-commands.js";
 
 class SimulatedAcpTransport implements KimiAcpTransportLike {
   sessionId: string | null = "sim-session-001";
@@ -138,9 +139,9 @@ describe("Real ACP / Kimi Dynamic Slash Commands Simulation", () => {
       },
     );
 
-    // Initial catalog must be empty and match schema
-    expect(adapter.commandCatalog).toEqual({ commands: [] });
-    expect(harnessCommandCatalogSchema.parse(adapter.commandCatalog)).toEqual({ commands: [] });
+    // Initial catalog must be default and match schema
+    expect(adapter.commandCatalog).toEqual(KIMI_DEFAULT_COMMAND_CATALOG);
+    expect(harnessCommandCatalogSchema.parse(adapter.commandCatalog)).toEqual(KIMI_DEFAULT_COMMAND_CATALOG);
 
     // Open session -> triggers ACP session open & processes commands.update
     const sessionRes = await adapter.open({
@@ -333,9 +334,9 @@ describe("Real ACP / Kimi Dynamic Slash Commands Simulation", () => {
     expect(adapter.commandCatalog.commands[1].id).toBe("custom-tool");
     expect(adapter.commandCatalog.commands[1].argumentMode).toBe("none");
 
-    // Close adapter -> commandCatalog cleanly resets to empty
+    // Close adapter -> commandCatalog cleanly resets to default catalog
     await adapter.close();
-    expect(adapter.commandCatalog).toEqual({ commands: [] });
+    expect(adapter.commandCatalog).toEqual(KIMI_DEFAULT_COMMAND_CATALOG);
   });
 
   it(
@@ -353,7 +354,7 @@ describe("Real ACP / Kimi Dynamic Slash Commands Simulation", () => {
       }
 
       const adapter = new KimiAdapter();
-      expect(adapter.commandCatalog).toEqual({ commands: [] });
+      expect(adapter.commandCatalog).toEqual(KIMI_DEFAULT_COMMAND_CATALOG);
 
       const sessionRes = await adapter.open({
         kind: "create",
@@ -398,7 +399,7 @@ describe("Real ACP / Kimi Dynamic Slash Commands Simulation", () => {
       await session.close();
       await adapter.close();
 
-      expect(adapter.commandCatalog).toEqual({ commands: [] });
+      expect(adapter.commandCatalog).toEqual(KIMI_DEFAULT_COMMAND_CATALOG);
     },
     25000,
   );

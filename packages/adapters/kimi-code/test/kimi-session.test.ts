@@ -31,6 +31,7 @@ import { createKimiNativeTurnRef } from "../src/history.js";
 import type { KimiAcpTransportLike } from "../src/kimi-adapter.js";
 import { projectKimiToolUpdate, type ActivePromptHandler, type SessionEventHandler } from "../src/acp-transport.js";
 import { encodeKimiModelRef } from "../src/models.js";
+import { KIMI_DEFAULT_COMMAND_CATALOG } from "../src/slash-commands.js";
 
 class MockKimiTransport implements KimiAcpTransportLike {
   sessionId: string | null = "session-mock-1";
@@ -119,7 +120,7 @@ describe("KimiSession", () => {
       expect(listResult.ok).toBe(true);
       if (listResult.ok) {
         expect(harnessCommandCatalogSchema.parse(listResult.value)).toBeDefined();
-        expect(listResult.value.commands).toHaveLength(0);
+        expect(listResult.value).toEqual(KIMI_DEFAULT_COMMAND_CATALOG);
       }
     });
 

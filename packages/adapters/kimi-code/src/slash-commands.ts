@@ -43,6 +43,37 @@ export function buildKimiCommandCatalog(
   return harnessCommandCatalogSchema.parse({ commands: descriptors });
 }
 
+export const KIMI_DEFAULT_COMMANDS: readonly AvailableCommand[] = [
+  {
+    name: "compact",
+    description: "Compact the conversation context",
+    input: { hint: "prompt" },
+  },
+  {
+    name: "status",
+    description: "Show current session status",
+  },
+  {
+    name: "usage",
+    description: "Show session token usage",
+  },
+  {
+    name: "mcp",
+    description: "Show MCP server status",
+  },
+  {
+    name: "tasks",
+    description: "List background tasks",
+  },
+  {
+    name: "help",
+    description: "Show available ACP commands",
+  },
+];
+
+export const KIMI_DEFAULT_COMMAND_CATALOG: HarnessCommandCatalog =
+  buildKimiCommandCatalog(KIMI_DEFAULT_COMMANDS);
+
 /**
  * Formats a command invocation into a prompt string for Kimi ACP.
  * Formats `/commandName` or `/commandName <args>`.

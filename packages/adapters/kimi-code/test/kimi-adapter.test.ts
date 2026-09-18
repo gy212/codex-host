@@ -20,6 +20,7 @@ import { KimiExecutableError } from "../src/command.js";
 import { KimiTransportError } from "../src/acp-transport.js";
 import type { SessionEventHandler } from "../src/acp-transport.js";
 import { encodeKimiModelRef } from "../src/models.js";
+import { KIMI_DEFAULT_COMMAND_CATALOG } from "../src/slash-commands.js";
 
 class FakeTransport implements KimiAcpTransportLike {
   sessionId: string | null = "session-fake";
@@ -726,10 +727,10 @@ effort = "medium"
   });
 
   describe("commandCatalog", () => {
-    it("is initially empty and conforms to schema", () => {
+    it("provides default catalog initially and conforms to schema", () => {
       const adapter = new KimiAdapter();
-      expect(adapter.commandCatalog).toEqual({ commands: [] });
-      expect(harnessCommandCatalogSchema.parse(adapter.commandCatalog)).toEqual({ commands: [] });
+      expect(adapter.commandCatalog).toEqual(KIMI_DEFAULT_COMMAND_CATALOG);
+      expect(harnessCommandCatalogSchema.parse(adapter.commandCatalog)).toEqual(KIMI_DEFAULT_COMMAND_CATALOG);
     });
 
     it("dynamically synchronizes commandCatalog upon session creation", async () => {
@@ -741,7 +742,7 @@ effort = "medium"
         },
       );
 
-      expect(adapter.commandCatalog).toEqual({ commands: [] });
+      expect(adapter.commandCatalog).toEqual(KIMI_DEFAULT_COMMAND_CATALOG);
 
       const result = await adapter.open({
         kind: "create",
@@ -792,7 +793,7 @@ effort = "medium"
       expect(adapter.commandCatalog.commands[2].argumentMode).toBe("text");
     });
 
-    it("resets commandCatalog to empty upon adapter.close()", async () => {
+    it("resets commandCatalog to default catalog upon adapter.close()", async () => {
       const adapter = new KimiAdapter(
         { homeDirectory: tempDir },
         {
@@ -810,7 +811,7 @@ effort = "medium"
 
       await adapter.close();
 
-      expect(adapter.commandCatalog).toEqual({ commands: [] });
+      expect(adapter.commandCatalog).toEqual(KIMI_DEFAULT_COMMAND_CATALOG);
     });
   });
 });

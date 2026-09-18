@@ -84,6 +84,7 @@ import {
 import {
   buildKimiCommandCatalog,
   formatKimiCommandPrompt,
+  KIMI_DEFAULT_COMMANDS,
 } from "./slash-commands.js";
 
 const kimiHarnessId: HarnessId = harnessIdSchema.parse("kimi-code");
@@ -165,7 +166,7 @@ export class KimiSession implements HarnessSession {
   } | null = null;
   #activeTurnPromise: Promise<void> | null = null;
   #activeInteraction: ActiveInteraction | null = null;
-  #availableCommands: AvailableCommand[] = [];
+  #availableCommands: AvailableCommand[] = [...KIMI_DEFAULT_COMMANDS];
   #onCommandsUpdate: ((catalog: HarnessCommandCatalog) => void) | undefined;
 
   constructor(options: KimiSessionOptions) {
