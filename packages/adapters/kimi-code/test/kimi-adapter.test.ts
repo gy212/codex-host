@@ -2,7 +2,9 @@ import { mkdtemp, mkdir, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import type { InitializeResponse } from "@agentclientprotocol/sdk";
 import {
+  harnessIdSchema,
   harnessInspectionSchema,
   harnessPermissionModeIdSchema,
   harnessThinkingOptionIdSchema,
@@ -35,7 +37,7 @@ class FakeTransport implements KimiAcpTransportLike {
     if (handler) for (const event of this.pendingSessionEvents.splice(0)) handler(event);
   }
   inspect = vi.fn(async () => ({
-    initialize: { protocolVersion: this.initVersion } as any,
+    initialize: { protocolVersion: this.initVersion } as InitializeResponse,
     authReady: this.authReady,
   }));
   openSession = vi.fn(async (input: { kind: string; sessionId?: string; cwd?: string }) => {
@@ -188,8 +190,8 @@ effort = "medium"
       const adapter = new KimiAdapter();
       const result = await adapter.open({
         kind: "fork",
-        sourceRef: { formatVersion: 1, harnessId: "kimi-code" as any, nativeSessionId: "s-1" as any },
-        checkpoint: { nativeSessionId: "s-1", checkpointKey: "cp-1" } as any,
+        sourceRef: { formatVersion: 1, harnessId: harnessIdSchema.parse("kimi-code"), nativeSessionId: "s-1" },
+        checkpoint: { formatVersion: 1, harnessId: harnessIdSchema.parse("kimi-code"), nativeSessionId: "s-1", checkpointId: "cp-1" },
         cwd: tempDir,
       });
 
@@ -204,7 +206,7 @@ effort = "medium"
       const adapter = new KimiAdapter();
       const result = await adapter.open({
         kind: "rollbackLastTurn",
-        sourceRef: { formatVersion: 1, harnessId: "kimi-code" as any, nativeSessionId: "s-1" as any },
+        sourceRef: { formatVersion: 1, harnessId: harnessIdSchema.parse("kimi-code"), nativeSessionId: "s-1" },
         cwd: tempDir,
       });
 
@@ -228,8 +230,8 @@ effort = "medium"
         kind: "create",
         cwd: tempDir,
         model: encodeKimiModelRef("relay"),
-        thinkingOptionId: "high" as any,
-        permissionModeId: "yolo" as any,
+        thinkingOptionId: harnessThinkingOptionIdSchema.parse("high"),
+        permissionModeId: harnessPermissionModeIdSchema.parse("yolo"),
       });
 
       expect(result.ok).toBe(true);
@@ -292,7 +294,7 @@ effort = "medium"
         kind: "resume",
         nativeRef: {
           formatVersion: 1,
-          harnessId: "kimi-code" as any,
+          harnessId: harnessIdSchema.parse("kimi-code"),
           nativeSessionId: sessionId,
         },
         cwd: tempDir,
@@ -304,7 +306,7 @@ effort = "medium"
       if (result.ok) {
         expect(nativeSessionRefSchema.parse(result.value.initialState.nativeRef)).toEqual({
           formatVersion: 1,
-          harnessId: "kimi-code",
+          harnessId: harnessIdSchema.parse("kimi-code"),
           nativeSessionId: sessionId,
           locator: { cwd: tempDir },
         });
@@ -354,7 +356,7 @@ effort = "medium"
         kind: "resume",
         nativeRef: {
           formatVersion: 1,
-          harnessId: "kimi-code" as any,
+          harnessId: harnessIdSchema.parse("kimi-code"),
           nativeSessionId: "missing-session",
         },
         cwd: tempDir,

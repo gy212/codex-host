@@ -19,7 +19,6 @@ import type {
 import {
   hostInteractionIdSchema,
   hostItemIdSchema,
-  type HostInteractionId,
   type HostItemId,
   type HostTurnId,
   type JsonObject,

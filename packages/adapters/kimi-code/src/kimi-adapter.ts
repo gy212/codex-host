@@ -3,7 +3,6 @@ import path from "node:path";
 
 import type {
   HarnessAdapter,
-  HarnessError,
   HarnessErrorCode,
   HarnessInspection,
   HarnessResult,

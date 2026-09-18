@@ -4,20 +4,16 @@ import { Readable, Writable } from "node:stream";
 import { sanitizeDiagnosticTail } from "@codexhost/harness-adapter";
 import {
   ClientSideConnection,
-  PROTOCOL_VERSION,
   ndJsonStream,
   type Client,
   type AvailableCommand,
   type CreateElicitationRequest,
   type CreateElicitationResponse,
   type InitializeResponse,
-  type LoadSessionResponse,
-  type NewSessionResponse,
   type PromptResponse,
   type RequestPermissionRequest,
   type RequestPermissionResponse,
   type SessionNotification,
-  type SessionUpdate,
 } from "@agentclientprotocol/sdk";
 
 import { KimiExecutableError, kimiInvocation, resolveKimiExecutable } from "./command.js";
@@ -226,7 +222,7 @@ export class KimiAcpTransport {
         );
         authReady = true;
       }
-    } catch (error) {
+    } catch {
       // Authentication check might fail if not logged in
       authReady = false;
     }
@@ -326,6 +322,8 @@ export class KimiAcpTransport {
     }
   }
 
+  #activePromptCancel: (() => void) | undefined;
+
   async prompt(
     text: string,
     handler: ActivePromptHandler,
@@ -337,11 +335,21 @@ export class KimiAcpTransport {
     }
 
     this.#activePrompt = handler;
+    let cancelTimer: NodeJS.Timeout | undefined;
+    const cancelPromise = new Promise<PromptResponse>((resolve) => {
+      this.#activePromptCancel = () => {
+        cancelTimer = setTimeout(() => resolve({ stopReason: "cancelled" }), 500);
+      };
+    });
+
     try {
-      return await connection.prompt({
-        sessionId,
-        prompt: [{ type: "text", text }],
-      });
+      return await Promise.race([
+        connection.prompt({
+          sessionId,
+          prompt: [{ type: "text", text }],
+        }),
+        cancelPromise,
+      ]);
     } catch (error) {
       throw new KimiTransportError(
         "unavailable",
@@ -349,6 +357,8 @@ export class KimiAcpTransport {
         { cause: error },
       );
     } finally {
+      if (cancelTimer) clearTimeout(cancelTimer);
+      this.#activePromptCancel = undefined;
       if (this.#activePrompt === handler) {
         this.#activePrompt = null;
       }
@@ -359,6 +369,10 @@ export class KimiAcpTransport {
     const connection = this.#connection;
     const sessionId = this.#sessionId;
     if (!connection || !sessionId || this.#closed) return;
+
+    if (this.#activePromptCancel) {
+      this.#activePromptCancel();
+    }
 
     try {
       await connection.cancel({ sessionId });
@@ -492,7 +506,7 @@ export class KimiAcpTransport {
       requestPermission: (params: RequestPermissionRequest) => this.#handleRequestPermission(params),
       unstable_createElicitation: (params: CreateElicitationRequest) => this.#handleCreateElicitation(params),
       extMethod: (method: string, params: Record<string, unknown>) => this.#handleExtMethod(method, params),
-      extNotification: (method: string, params: Record<string, unknown>) => this.#handleExtNotification(method, params),
+      extNotification: () => this.#handleExtNotification(),
     };
 
     const connection = new ClientSideConnection(() => client, stream);
@@ -594,7 +608,7 @@ export class KimiAcpTransport {
     throw new Error(`Unsupported client method: ${method}`);
   }
 
-  async #handleExtNotification(_method: string, _params: Record<string, unknown>): Promise<void> {
+  async #handleExtNotification(): Promise<void> {
     // Ignore unrecognized notifications
   }
 

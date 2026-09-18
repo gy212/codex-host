@@ -185,7 +185,9 @@ describe("Kimi Code History & Diff", () => {
       const turns = await parseKimiWireLog(wireLines, "session-test", mainHomeDir);
       expect(turns).toHaveLength(1);
 
-      const turn = turns[0]!;
+      const turn = turns[0];
+      expect(turn).toBeDefined();
+      if (!turn) return;
       expect(turn.nativeTurnRef.nativeTurnKey).toBe("turn:0");
       expect(turn.outcome.status).toBe("succeeded");
       expect(turn.input).toEqual([{ type: "text", text: "Modify file" }]);
@@ -209,12 +211,15 @@ describe("Kimi Code History & Diff", () => {
       expect(fileChangeItem).toBeDefined();
       if (fileChangeItem && fileChangeItem.item.type === "fileChange") {
         expect(fileChangeItem.item.changes).toHaveLength(1);
-        const change = fileChangeItem.item.changes[0]!;
-        expect(change.path).toBe("sample.txt");
-        expect(change.kind).toBe("update");
-        expect(change.unifiedDiff).toContain("-line 2");
-        expect(change.unifiedDiff).toContain("+line 2 modified");
-        expect(change.unifiedDiff).toContain("+line 3 added");
+        const change = fileChangeItem.item.changes[0];
+        expect(change).toBeDefined();
+        if (change) {
+          expect(change.path).toBe("sample.txt");
+          expect(change.kind).toBe("update");
+          expect(change.unifiedDiff).toContain("-line 2");
+          expect(change.unifiedDiff).toContain("+line 2 modified");
+          expect(change.unifiedDiff).toContain("+line 3 added");
+        }
       }
     });
 
@@ -236,7 +241,9 @@ describe("Kimi Code History & Diff", () => {
 
       const turns = await parseKimiWireLog(wireLines, "session-cancel");
       expect(turns).toHaveLength(1);
-      const turn = turns[0]!;
+      const turn = turns[0];
+      expect(turn).toBeDefined();
+      if (!turn) return;
       expect(turn.outcome.status).toBe("cancelled");
       if (turn.outcome.status === "cancelled") {
         expect(turn.outcome.reason).toContain("cancelled");
@@ -273,8 +280,8 @@ describe("Kimi Code History & Diff", () => {
 
       const turns = await parseKimiWireLog(wireLines, "session-seq");
       expect(turns).toHaveLength(2);
-      expect(turns[0]!.nativeTurnRef.nativeTurnKey).toBe("turn:0");
-      expect(turns[1]!.nativeTurnRef.nativeTurnKey).toBe("turn:1");
+      expect(turns[0]?.nativeTurnRef.nativeTurnKey).toBe("turn:0");
+      expect(turns[1]?.nativeTurnRef.nativeTurnKey).toBe("turn:1");
     });
   });
 
@@ -319,7 +326,7 @@ describe("Kimi Code History & Diff", () => {
 
       const snapshot = await readKimiSessionSnapshot(sessionId, { kimiCodeHome: tempDir });
       expect(snapshot.turns).toHaveLength(1);
-      expect(snapshot.turns[0]!.outcome.status).toBe("succeeded");
+      expect(snapshot.turns[0]?.outcome.status).toBe("succeeded");
     });
 
     it("preserves a present but empty native history", async () => {
@@ -404,6 +411,74 @@ describe("Kimi Code History & Diff", () => {
       expect(usage?.outputTokens).toBe(100);
       expect(usage?.contextUsedTokens).toBe(1300);
       expect(usage?.contextWindowTokens).toBe(200_000);
+    });
+
+    it("routes pre-tool commentary to reasoning and keeps final answer in agentMessage", async () => {
+      const wire = [
+        JSON.stringify({ type: "turn.prompt", turnId: 0, time: 1000, input: [{ type: "text", text: "write code\n" }] }),
+        JSON.stringify({
+          type: "context.append_loop_event",
+          event: { type: "content.part", turnId: 0, part: { type: "text", text: "Thinking about quicksort..." } },
+        }),
+        JSON.stringify({
+          type: "context.append_loop_event",
+          event: { type: "tool.call", turnId: 0, toolCallId: "call-1", name: "Write", args: { path: "quicksort.py" } },
+        }),
+        JSON.stringify({
+          type: "context.append_loop_event",
+          event: { type: "tool.result", turnId: 0, toolCallId: "call-1", result: { output: "ok" } },
+        }),
+        JSON.stringify({
+          type: "context.append_loop_event",
+          event: { type: "content.part", turnId: 0, part: { type: "text", text: "Successfully created quicksort.py." } },
+        }),
+        JSON.stringify({ type: "turn.ended", turnId: 0, reason: "completed", time: 15000, durationMs: 14000 }),
+      ].join("\n");
+
+      const snapshots = await parseKimiWireLog(wire, "s-fold-1");
+      expect(snapshots).toHaveLength(1);
+      const turn = snapshots[0];
+      expect(turn).toBeDefined();
+      if (!turn) return;
+
+      // Reasoning should have the pre-tool text
+      const reasoning = turn.items.find((i) => i.item.type === "reasoning");
+      expect(reasoning).toBeDefined();
+      if (reasoning && reasoning.item.type === "reasoning") {
+        expect(reasoning.item.text).toContain("Thinking about quicksort...");
+      }
+
+      // Agent message should ONLY have the final answer
+      const agentMsg = turn.items.find((i) => i.item.type === "agentMessage");
+      expect(agentMsg).toBeDefined();
+      if (agentMsg && agentMsg.item.type === "agentMessage") {
+        expect(agentMsg.item.text).toBe("Successfully created quicksort.py.");
+      }
+
+      // Timing must be properly populated
+      expect(turn.startedAtMs).toBe(1000);
+      expect(turn.completedAtMs).toBe(15000);
+    });
+
+    it("populates fallback completedAtMs from lastSeenTimeMs when turn has no turn.ended", async () => {
+      const wire = [
+        JSON.stringify({ type: "turn.prompt", turnId: 0, time: 2000, input: [{ type: "text", text: "cancelled task" }] }),
+        JSON.stringify({
+          type: "context.append_loop_event",
+          event: { type: "content.part", turnId: 0, part: { type: "text", text: "Working..." } },
+          time: 5500,
+        }),
+        JSON.stringify({ type: "agent.turn.ended", turnId: 0, outcome: "cancelled", time: 6000 }),
+      ].join("\n");
+
+      const snapshots = await parseKimiWireLog(wire, "s-cancel-time");
+      expect(snapshots).toHaveLength(1);
+      const turn = snapshots[0];
+      expect(turn).toBeDefined();
+      if (!turn) return;
+      expect(turn.startedAtMs).toBe(2000);
+      expect(turn.completedAtMs).toBe(6000);
+      expect(turn.outcome.status).toBe("cancelled");
     });
   });
 });

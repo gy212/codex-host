@@ -12,7 +12,6 @@ import {
   encodeKimiModelRef,
   isKimiModeId,
   kimiPermissionModeCatalog,
-  parseAcpConfigOptions,
   parseKimiConfigToml,
   resolveKimiContextWindow,
   type KimiNativeConfig,
@@ -132,10 +131,13 @@ default_model = "test"
       const validated = harnessModelCatalogSchema.parse(catalog);
 
       expect(validated.models).toHaveLength(2);
-      expect(decodeKimiModelRefId(validated.models[0]!.ref.id)).toBe("relay");
-      expect(validated.models[0]!.label).toBe("relay (claude-sonnet-5)");
-      expect(validated.models[0]!.resolvedModelLabel).toBe("claude-sonnet-5");
-      expect(validated.defaultModel?.id).toBe(validated.models[0]!.ref.id);
+      const firstModel = validated.models[0];
+      expect(firstModel).toBeDefined();
+      if (!firstModel) return;
+      expect(decodeKimiModelRefId(firstModel.ref.id)).toBe("relay");
+      expect(firstModel.label).toBe("relay (claude-sonnet-5)");
+      expect(firstModel.resolvedModelLabel).toBe("claude-sonnet-5");
+      expect(validated.defaultModel?.id).toBe(firstModel.ref.id);
       expect(validated.defaultThinkingOptionId).toBe("high");
       expect(validated.thinkingOptions.map((t) => t.id)).toContain("off");
       expect(validated.thinkingOptions.map((t) => t.id)).toContain("high");
@@ -155,7 +157,11 @@ default_model = "test"
     it("falls back to default model when config has no models or defaults", () => {
       const catalog = buildModelCatalogFromConfig({ models: [] });
       expect(catalog.models).toHaveLength(1);
-      expect(decodeKimiModelRefId(catalog.models[0]!.ref.id)).toBe("default");
+      const fallbackModel = catalog.models[0];
+      expect(fallbackModel).toBeDefined();
+      if (fallbackModel) {
+        expect(decodeKimiModelRefId(fallbackModel.ref.id)).toBe("default");
+      }
     });
   });
 
@@ -188,9 +194,12 @@ default_model = "test"
       const validated = harnessModelCatalogSchema.parse(catalog);
 
       expect(validated.models).toHaveLength(2);
-      expect(decodeKimiModelRefId(validated.models[0]!.ref.id)).toBe("relay");
-      expect(validated.models[0]!.label).toBe("Claude Sonnet 5 (Relay)");
-      expect(validated.defaultModel?.id).toBe(validated.models[0]!.ref.id);
+      const firstModel = validated.models[0];
+      expect(firstModel).toBeDefined();
+      if (!firstModel) return;
+      expect(decodeKimiModelRefId(firstModel.ref.id)).toBe("relay");
+      expect(firstModel.label).toBe("Claude Sonnet 5 (Relay)");
+      expect(validated.defaultModel?.id).toBe(firstModel.ref.id);
       expect(validated.defaultThinkingOptionId).toBe("high");
     });
 
@@ -202,7 +211,11 @@ default_model = "test"
 
       const catalog = buildModelCatalogFromAcp([], fallbackConfig);
       expect(catalog.models).toHaveLength(1);
-      expect(decodeKimiModelRefId(catalog.models[0]!.ref.id)).toBe("fallback-m");
+      const fallbackModel = catalog.models[0];
+      expect(fallbackModel).toBeDefined();
+      if (fallbackModel) {
+        expect(decodeKimiModelRefId(fallbackModel.ref.id)).toBe("fallback-m");
+      }
     });
   });
 

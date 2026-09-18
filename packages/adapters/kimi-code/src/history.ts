@@ -155,15 +155,17 @@ export interface KimiNativeTurnBuilder {
   input: HostTextInput[];
   startedAtMs?: number;
   completedAtMs?: number;
+  lastSeenTimeMs?: number;
   reason?: string;
   model?: string;
-  contentParts: Array<{ text: string; thought?: boolean; uuid?: string }>;
+  contentParts: Array<{ text: string; thought?: boolean; uuid?: string; order: number }>;
   toolCalls: Map<string, {
     toolCallId: string;
     name: string;
     args: unknown;
     display?: unknown;
     result?: unknown;
+    order: number;
   }>;
   fileHistoryTracked: Map<string, { key: string | null; version: number }>;
   fileHistoryCheckpoint: Map<string, { key: string; version: number; size?: number }>;
@@ -176,6 +178,7 @@ export async function parseKimiWireLog(
 ): Promise<HostTurnSnapshot[]> {
   const lines = wireContent.split("\n");
   const turns = new Map<number, KimiNativeTurnBuilder>();
+  let eventOrder = 0;
 
   const getOrCreateTurn = (turnId: number): KimiNativeTurnBuilder => {
     let turn = turns.get(turnId);
@@ -216,6 +219,14 @@ export async function parseKimiWireLog(
       continue; // Only process main agent events
     }
 
+    if (typeof record.time === "number") {
+      const rawTurnId = typeof record.turnId === "number"
+        ? record.turnId
+        : Array.from(turns.keys()).pop() ?? 0;
+      const turn = getOrCreateTurn(rawTurnId);
+      turn.lastSeenTimeMs = Math.max(turn.lastSeenTimeMs ?? 0, record.time);
+    }
+
     if (type === "turn.prompt") {
       const turnId = typeof record.turnId === "number" ? record.turnId : 0;
       const turn = getOrCreateTurn(turnId);
@@ -232,11 +243,38 @@ export async function parseKimiWireLog(
           }
         }
       }
+    } else if (type === "agent.turn.started") {
+      const turnId = typeof record.turnId === "number" ? record.turnId : 0;
+      const turn = getOrCreateTurn(turnId);
+      if (turn.startedAtMs === undefined && typeof record.time === "number") {
+        turn.startedAtMs = record.time;
+      }
     } else if (type === "turn.ended") {
       const turnId = typeof record.turnId === "number" ? record.turnId : 0;
       const turn = getOrCreateTurn(turnId);
       if (typeof record.reason === "string") turn.reason = record.reason;
       if (typeof record.time === "number") turn.completedAtMs = record.time;
+      if (typeof record.durationMs === "number" && turn.startedAtMs !== undefined && !turn.completedAtMs) {
+        turn.completedAtMs = turn.startedAtMs + record.durationMs;
+      }
+    } else if (type === "agent.turn.ended") {
+      const turnId = typeof record.turnId === "number" ? record.turnId : 0;
+      const turn = getOrCreateTurn(turnId);
+      if (turn.completedAtMs === undefined && typeof record.time === "number") {
+        turn.completedAtMs = record.time;
+      }
+      if (record.outcome === "cancelled" || record.outcome === "interrupted") {
+        turn.reason = "cancelled";
+      }
+    } else if (type === "prompt.completed") {
+      const turnId = typeof record.turnId === "number" ? record.turnId : Array.from(turns.keys()).pop() ?? 0;
+      const turn = getOrCreateTurn(turnId);
+      if (turn.completedAtMs === undefined && typeof record.time === "number") {
+        turn.completedAtMs = record.time;
+      }
+      if (record.reason === "cancelled") {
+        turn.reason = "cancelled";
+      }
     } else if (type === "usage.record") {
       const turnId = typeof record.turnId === "number" ? record.turnId : Array.from(turns.keys()).pop() ?? 0;
       const turn = getOrCreateTurn(turnId);
@@ -298,6 +336,7 @@ export async function parseKimiWireLog(
               text: text || "思考中...",
               thought: isThought,
               ...(typeof event.uuid === "string" ? { uuid: event.uuid } : {}),
+              order: eventOrder++,
             });
           }
         }
@@ -311,11 +350,12 @@ export async function parseKimiWireLog(
           name,
           args,
           display,
+          order: eventOrder++,
         });
       } else if (eventType === "tool.result") {
         const toolCallId = typeof event.toolCallId === "string" ? event.toolCallId : undefined;
-        if (toolCallId && turn.toolCalls.has(toolCallId)) {
-          const call = turn.toolCalls.get(toolCallId)!;
+        const call = toolCallId ? turn.toolCalls.get(toolCallId) : undefined;
+        if (call) {
           call.result = event.result;
         } else {
           // Check by parentUuid
@@ -343,9 +383,15 @@ export async function parseKimiWireLog(
     let currentAgentText = "";
     let currentThoughtText = "";
 
+    const toolOrders = Array.from(turn.toolCalls.values()).map((c) => c.order);
+    const maxToolOrder = toolOrders.length > 0 ? Math.max(...toolOrders) : -1;
+
     for (const part of turn.contentParts) {
       if (part.thought) {
-        currentThoughtText += part.text;
+        currentThoughtText += (currentThoughtText ? "\n" : "") + part.text;
+      } else if (maxToolOrder >= 0 && part.order < maxToolOrder) {
+        // Commentary before or between tool calls belongs to reasoning inside the process fold
+        currentThoughtText += (currentThoughtText ? "\n" : "") + part.text;
       } else {
         currentAgentText += part.text;
       }
@@ -405,7 +451,20 @@ export async function parseKimiWireLog(
       }
     }
 
-    // 3. File changes
+    // 3. Agent response (assistant message appears before fileChange diff card)
+    if (currentAgentText) {
+      const agentMessageItem: HostAgentMessageItem = {
+        type: "agentMessage",
+        itemId: hostItemIdSchema.parse(`item:${turnId}:agentMessage`),
+        text: currentAgentText,
+      };
+      items.push({
+        item: agentMessageItem,
+        outcome: { status: "succeeded" },
+      });
+    }
+
+    // 4. File changes
     if (mainHomeDir && (turn.fileHistoryCheckpoint.size > 0 || turn.fileHistoryTracked.size > 0)) {
       const changes: HostFileChange[] = [];
       const allPaths = new Set([
@@ -466,19 +525,6 @@ export async function parseKimiWireLog(
       }
     }
 
-    // 4. Agent response
-    if (currentAgentText) {
-      const agentMessageItem: HostAgentMessageItem = {
-        type: "agentMessage",
-        itemId: hostItemIdSchema.parse(`item:${turnId}:agentMessage`),
-        text: currentAgentText,
-      };
-      items.push({
-        item: agentMessageItem,
-        outcome: { status: "succeeded" },
-      });
-    }
-
     // 5. Determine turn outcome
     let outcome: HistoricalTurnOutcome;
     if (turn.reason === "completed") {
@@ -495,6 +541,14 @@ export async function parseKimiWireLog(
         status: "unknown",
         reason: turn.reason ? `Unrecognized native reason: ${turn.reason}` : "Missing turn.ended record",
       };
+    }
+
+    if (turn.startedAtMs !== undefined && turn.completedAtMs === undefined) {
+      if (turn.lastSeenTimeMs !== undefined && turn.lastSeenTimeMs >= turn.startedAtMs) {
+        turn.completedAtMs = turn.lastSeenTimeMs;
+      } else {
+        turn.completedAtMs = turn.startedAtMs;
+      }
     }
 
     snapshots.push({

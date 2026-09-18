@@ -5,13 +5,18 @@ import { describe, expect, it, vi } from "vitest";
 import type {
   CreateElicitationRequest,
   CreateElicitationResponse,
+  InitializeResponse,
   PromptResponse,
   RequestPermissionRequest,
   RequestPermissionResponse,
 } from "@agentclientprotocol/sdk";
 import {
   harnessCommandCatalogSchema,
+  harnessIdSchema,
+  harnessPermissionModeIdSchema,
+  harnessThinkingOptionIdSchema,
   hostTurnIdSchema,
+  type HostInteractionId,
 } from "@codexhost/shared-contracts";
 import type {
   HarnessOutput,
@@ -43,11 +48,11 @@ class MockKimiTransport implements KimiAcpTransportLike {
   }
 
   async inspect() {
-    return { initialize: { protocolVersion: 1 } as any, authReady: true };
+    return { initialize: { protocolVersion: 1 } as InitializeResponse, authReady: true };
   }
 
   async openSession() {
-    return { sessionId: this.sessionId! };
+    return { sessionId: this.sessionId ?? "session-mock-1" };
   }
 
   async setConfigOption(configId: string, value: string) {
@@ -78,15 +83,6 @@ class MockKimiTransport implements KimiAcpTransportLike {
   }
 }
 
-async function collectOutputs(outputs: AsyncIterable<HarnessOutput>, count: number): Promise<HarnessOutput[]> {
-  const items: HarnessOutput[] = [];
-  for await (const out of outputs) {
-    items.push(out);
-    if (items.length >= count) break;
-  }
-  return items;
-}
-
 describe("KimiSession", () => {
   it("initializes state, capabilities, and nativeSessionRef", () => {
     const transport = new MockKimiTransport();
@@ -95,7 +91,7 @@ describe("KimiSession", () => {
       sessionId: "session-123",
       cwd: "D:/project",
       initialState: {
-        effectivePermissionModeId: "default" as any,
+        effectivePermissionModeId: harnessPermissionModeIdSchema.parse("default"),
       },
     });
 
@@ -142,7 +138,7 @@ describe("KimiSession", () => {
 
       const turnId = hostTurnIdSchema.parse("turn-cmd-1");
       const execResult = await session.commands.execute({
-        commandId: "compact" as any,
+        commandId: "compact",
         turnId,
         arguments: { text: "extra" },
       });
@@ -178,7 +174,7 @@ describe("KimiSession", () => {
                 {
                   nativeTurnRef: {
                     formatVersion: 1,
-                    harnessId: "kimi-code" as any,
+                    harnessId: harnessIdSchema.parse("kimi-code"),
                     nativeSessionId: "session-turn",
                     nativeTurnKey: "turn:0",
                   },
@@ -216,23 +212,31 @@ describe("KimiSession", () => {
 
       const itemStarts = outputs.filter(
         (o) => o.kind === "event" && o.event.type === "item.started",
-      ) as Array<Extract<HarnessOutput, { kind: "event"; event: { type: "item.started" } }>>;
-      const reasoningStart = itemStarts.find((s) => s.event.item.type === "reasoning");
-      const agentStart = itemStarts.find((s) => s.event.item.type === "agentMessage");
-      expect((reasoningStart?.event.item as any)?.text).toBe("");
-      expect((agentStart?.event.item as any)?.text).toBe("");
+      );
+      const reasoningStart = itemStarts.find(
+        (s) => s.kind === "event" && s.event.type === "item.started" && s.event.item.type === "reasoning",
+      );
+      const agentStart = itemStarts.find(
+        (s) => s.kind === "event" && s.event.type === "item.started" && s.event.item.type === "agentMessage",
+      );
+      if (reasoningStart && reasoningStart.kind === "event" && reasoningStart.event.type === "item.started" && reasoningStart.event.item.type === "reasoning") {
+        expect(reasoningStart.event.item.text).toBe("");
+      }
+      if (agentStart && agentStart.kind === "event" && agentStart.event.type === "item.started" && agentStart.event.item.type === "agentMessage") {
+        expect(agentStart.event.item.text).toBe("");
+      }
 
       const reasoningCompletedIndex = outputs.findIndex(
         (o) =>
           o.kind === "event" &&
           o.event.type === "item.completed" &&
-          (o.event.snapshot.item as any).type === "reasoning",
+          o.event.snapshot.item.type === "reasoning",
       );
       const agentStartEventIndex = outputs.findIndex(
         (o) =>
           o.kind === "event" &&
           o.event.type === "item.started" &&
-          (o.event.item as any).type === "agentMessage",
+          o.event.item.type === "agentMessage",
       );
       expect(reasoningCompletedIndex).toBeGreaterThan(-1);
       expect(agentStartEventIndex).toBeGreaterThan(-1);
@@ -649,9 +653,11 @@ describe("KimiSession", () => {
       expect(alwaysAction?.effect).toBe("allowForSession");
 
       // Respond to interaction
+      expect(emittedInteraction).toBeDefined();
+      if (!emittedInteraction) return;
       const respondResult = await session.execute({
         type: "interaction.respond",
-        interactionId: emittedInteraction!.interactionId,
+        interactionId: emittedInteraction.interactionId,
         response: {
           type: "approval",
           actionId: "approve_always",
@@ -717,20 +723,21 @@ describe("KimiSession", () => {
       }
 
       expect(emittedQuestion).not.toBeNull();
-      expect(emittedQuestion?.questions).toHaveLength(2);
-      const q0 = emittedQuestion!.questions[0]!;
-      const q1 = emittedQuestion!.questions[1]!;
-      if ("options" in q0) {
+      if (!emittedQuestion) return;
+      expect(emittedQuestion.questions).toHaveLength(2);
+      const q0 = emittedQuestion.questions[0];
+      const q1 = emittedQuestion.questions[1];
+      if (q0 && "options" in q0) {
         expect(q0.multiple).toBe(false);
       }
-      if ("options" in q1) {
+      if (q1 && "options" in q1) {
         expect(q1.multiple).toBe(true);
       }
 
       // Respond
       const respondResult = await session.execute({
         type: "interaction.respond",
-        interactionId: emittedQuestion!.interactionId,
+        interactionId: emittedQuestion.interactionId,
         response: {
           type: "question",
           answers: {
@@ -755,7 +762,9 @@ describe("KimiSession", () => {
 
       transport.promptMock = vi.fn(async (_text: string, handler: ActivePromptHandler) => {
         // Direct elicitation without explicit thought chunk
-        const elicitationPromise = handler.onElicitation({
+        const elicitationReq: CreateElicitationRequest = {
+          sessionId: "s",
+          mode: "form",
           message: "Select an option",
           requestedSchema: {
             title: "Ask user question",
@@ -767,7 +776,8 @@ describe("KimiSession", () => {
               },
             },
           },
-        });
+        };
+        const elicitationPromise = handler.onElicitation(elicitationReq);
 
         await elicitationPromise;
         handler.onEvent({ type: "agent.text", text: "Answer complete." });
@@ -872,7 +882,7 @@ describe("KimiSession", () => {
         input: [{ type: "text", text: "run" }],
       });
 
-      let interactionId: any;
+      let interactionId: HostInteractionId | undefined;
       for await (const out of session.outputs) {
         if (out.kind === "interaction") {
           interactionId = out.interaction.interactionId;
@@ -881,6 +891,8 @@ describe("KimiSession", () => {
       }
 
       // Wrong type: sending question response to approval interaction
+      expect(interactionId).toBeDefined();
+      if (!interactionId) return;
       const res = await session.execute({
         type: "interaction.respond",
         interactionId,
@@ -967,17 +979,204 @@ describe("KimiSession", () => {
 
       const thinkingRes = await session.execute({
         type: "thinking.select",
-        thinkingOptionId: "high" as any,
+        thinkingOptionId: harnessThinkingOptionIdSchema.parse("high"),
       });
       expect(thinkingRes.ok).toBe(true);
       expect(transport.configOptionsSet).toContainEqual({ configId: "thinking", value: "high" });
 
       const modeRes = await session.execute({
         type: "permissionMode.select",
-        permissionModeId: "plan" as any,
+        permissionModeId: harnessPermissionModeIdSchema.parse("plan"),
       });
       expect(modeRes.ok).toBe(true);
       expect(transport.configOptionsSet).toContainEqual({ configId: "mode", value: "plan" });
+    });
+  });
+
+  describe("Folding & Turn Completion Regressions", () => {
+    it("routes pre-tool text to reasoning without starting agentMessage prematurely", async () => {
+      const transport = new MockKimiTransport();
+      transport.promptMock = vi.fn(async (_text: string, handler: ActivePromptHandler) => {
+        // 1. Text arrives before tool call
+        handler.onEvent({
+          type: "agent.text",
+          text: "No existing python files found. Writing quicksort...",
+        });
+        // 2. Tool call arrives shortly after
+        handler.onEvent({
+          type: "tool.call",
+          toolCallId: "call-w",
+          name: "Write",
+          args: { path: "quicksort.py", content: "def quicksort(): pass" },
+        });
+        handler.onEvent({
+          type: "tool.update",
+          toolCallId: "call-w",
+          status: "completed",
+        });
+        // 3. Final answer arrives after tool completion
+        handler.onEvent({
+          type: "agent.text",
+          text: "Done. Created quicksort.py.",
+        });
+        return { stopReason: "end_turn" };
+      });
+
+      let snapshotReads = 0;
+      const session = new KimiSession({
+        transport,
+        sessionId: "s-fold-reg",
+        cwd: "D:/project",
+        initialState: {},
+        readNativeSnapshot: async () => ({
+          turns: snapshotReads++ === 0
+            ? []
+            : [
+                {
+                  nativeTurnRef: { formatVersion: 1, harnessId: harnessIdSchema.parse("kimi-code"), nativeSessionId: "s-fold-reg", nativeTurnKey: "turn:0" },
+                  input: [{ type: "text", text: "write algorithm\n" }],
+                  items: [],
+                  outcome: { status: "succeeded" },
+                },
+              ],
+        }),
+      });
+
+      const turnId = hostTurnIdSchema.parse("turn-fold-test");
+      await session.execute({
+        type: "turn.start",
+        turnId,
+        input: [{ type: "text", text: "write algorithm" }],
+      });
+
+      const outputs: HarnessOutput[] = [];
+      for await (const out of session.outputs) {
+        outputs.push(out);
+        if (out.kind === "event" && out.event.type === "turn.completed") break;
+      }
+
+      // Check all agentMessage starts
+      const agentMessageStarts = outputs.filter(
+        (o) => o.kind === "event" && o.event.type === "item.started" && o.event.item.type === "agentMessage",
+      );
+      // There must be EXACTLY ONE agentMessage (the final answer), NOT two!
+      expect(agentMessageStarts).toHaveLength(1);
+
+      // Check that pre-tool text was absorbed into reasoning
+      const reasoningItems = outputs.filter(
+        (o) => o.kind === "event" && o.event.type === "item.completed" && o.event.snapshot.item.type === "reasoning",
+      );
+      expect(reasoningItems.length).toBeGreaterThanOrEqual(1);
+      const reasoningTexts = reasoningItems.map(
+        (o) => (o.kind === "event" && o.event.type === "item.completed" && o.event.snapshot.item.type === "reasoning" ? o.event.snapshot.item.text : ""),
+      ).join(" ");
+      expect(reasoningTexts).toContain("No existing python files found. Writing quicksort...");
+
+      // Final agent message text
+      const finalAgentMessage = outputs.find(
+        (o) => o.kind === "event" && o.event.type === "item.completed" && o.event.snapshot.item.type === "agentMessage",
+      );
+      expect(finalAgentMessage).toBeDefined();
+      if (finalAgentMessage && finalAgentMessage.kind === "event" && finalAgentMessage.event.type === "item.completed" && finalAgentMessage.event.snapshot.item.type === "agentMessage") {
+        expect(finalAgentMessage.event.snapshot.item.text).toBe("Done. Created quicksort.py.");
+      }
+
+      // Order check: toolExecution happened AFTER reasoning, and agentMessage happened AFTER toolExecution
+      const eventTypes = outputs.map((o) => {
+        if (o.kind === "event") {
+          if (o.event.type === "item.started") return `start:${o.event.item.type}`;
+          if (o.event.type === "item.completed") return `complete:${o.event.snapshot.item.type}`;
+          return o.event.type;
+        }
+        return o.kind;
+      });
+
+      expect(eventTypes.indexOf("complete:reasoning")).toBeLessThan(eventTypes.indexOf("start:toolExecution"));
+      expect(eventTypes.indexOf("complete:toolExecution")).toBeLessThan(eventTypes.indexOf("start:agentMessage"));
+    });
+
+    it("correlates Native Turn with trailing newline in user input without 2000ms delay", async () => {
+      const transport = new MockKimiTransport();
+      let snapshotReads = 0;
+      const session = new KimiSession({
+        transport,
+        sessionId: "s-correlate-reg",
+        cwd: "D:/project",
+        initialState: {},
+        readNativeSnapshot: async () => ({
+          turns: snapshotReads++ === 0
+            ? []
+            : [
+                {
+                  nativeTurnRef: { formatVersion: 1, harnessId: harnessIdSchema.parse("kimi-code"), nativeSessionId: "s-correlate-reg", nativeTurnKey: "turn:0" },
+                  input: [{ type: "text", text: "test input\n" }], // Kimi writes with \n
+                  items: [],
+                  outcome: { status: "succeeded" },
+                },
+              ],
+        }),
+      });
+
+      const startTime = Date.now();
+      const turnId = hostTurnIdSchema.parse("turn-corr-test");
+      await session.execute({
+        type: "turn.start",
+        turnId,
+        input: [{ type: "text", text: "test input" }], // Codex starts without \n
+      });
+
+      for await (const out of session.outputs) {
+        if (out.kind === "event" && out.event.type === "turn.completed") {
+          expect(out.event.outcome.status).toBe("succeeded");
+          break;
+        }
+      }
+
+      const elapsed = Date.now() - startTime;
+      // Should correlate immediately, nowhere near the 2000ms timeout
+      expect(elapsed).toBeLessThan(1000);
+    });
+
+    it("cancels immediately when turn.cancel is received", async () => {
+      const transport = new MockKimiTransport();
+      let cancelCalled = false;
+      transport.promptMock = vi.fn(async () => {
+        while (!cancelCalled) {
+          await new Promise((r) => setTimeout(r, 20));
+        }
+        return { stopReason: "cancelled" };
+      });
+      transport.cancel = async () => {
+        cancelCalled = true;
+      };
+
+      const session = new KimiSession({
+        transport,
+        sessionId: "s-cancel-reg",
+        cwd: "D:/project",
+        initialState: {},
+        readNativeSnapshot: async () => ({ turns: [] }),
+      });
+
+      const turnId = hostTurnIdSchema.parse("turn-cancel-test");
+      await session.execute({
+        type: "turn.start",
+        turnId,
+        input: [{ type: "text", text: "cancel me" }],
+      });
+
+      const cancelRes = await session.execute({
+        type: "turn.cancel",
+        turnId,
+      });
+      expect(cancelRes.ok).toBe(true);
+
+      for await (const out of session.outputs) {
+        if (out.kind === "event" && out.event.type === "turn.completed") {
+          expect(out.event.outcome.status).toBe("cancelled");
+          break;
+        }
+      }
     });
   });
 
