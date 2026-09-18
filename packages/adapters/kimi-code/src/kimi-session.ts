@@ -383,6 +383,26 @@ export class KimiSession implements HarnessSession {
 
     let agentMessageItem: HostAgentMessageItem | null = null;
     let reasoningItem: HostReasoningItem | null = null;
+    let reasoningCompleted = false;
+
+    const completeReasoning = () => {
+      if (reasoningItem && !reasoningCompleted) {
+        reasoningCompleted = true;
+        const item: HostReasoningItem = {
+          type: "reasoning",
+          itemId: reasoningItem.itemId,
+          text: reasoningItem.text,
+        };
+        this.#channel.emit({
+          kind: "event",
+          event: {
+            type: "item.completed",
+            turnId,
+            snapshot: { item, outcome: { status: "succeeded" } },
+          },
+        });
+      }
+    };
 
     const handler: ActivePromptHandler = {
       onEvent: (event: KimiTransportEvent) => {
@@ -390,15 +410,21 @@ export class KimiSession implements HarnessSession {
 
         switch (event.type) {
           case "agent.text": {
+            completeReasoning();
             if (!agentMessageItem) {
               agentMessageItem = {
                 type: "agentMessage",
                 itemId: hostItemIdSchema.parse(`item:${turnId}:agentMessage`),
                 text: "",
               };
+              const item: HostAgentMessageItem = {
+                type: "agentMessage",
+                itemId: agentMessageItem.itemId,
+                text: "",
+              };
               this.#channel.emit({
                 kind: "event",
-                event: { type: "item.started", turnId, item: agentMessageItem },
+                event: { type: "item.started", turnId, item },
               });
             }
             agentMessageItem.text += event.text;
@@ -420,9 +446,14 @@ export class KimiSession implements HarnessSession {
                 itemId: hostItemIdSchema.parse(`item:${turnId}:reasoning`),
                 text: "",
               };
+              const item: HostReasoningItem = {
+                type: "reasoning",
+                itemId: reasoningItem.itemId,
+                text: "",
+              };
               this.#channel.emit({
                 kind: "event",
-                event: { type: "item.started", turnId, item: reasoningItem },
+                event: { type: "item.started", turnId, item },
               });
             }
             reasoningItem.text += event.text;
@@ -438,6 +469,7 @@ export class KimiSession implements HarnessSession {
             break;
           }
           case "tool.call": {
+            completeReasoning();
             const state = accumulator.getOrCreate(event.toolCallId, turnId, event.name, event.kind);
             state.name = event.name;
             if (event.kind) state.kind = event.kind;
@@ -453,6 +485,7 @@ export class KimiSession implements HarnessSession {
             break;
           }
           case "tool.update": {
+            completeReasoning();
             const state = accumulator.getOrCreate(event.toolCallId, turnId, event.name, event.kind);
             if (event.name) state.name = event.name;
             if (event.kind) state.kind = event.kind;
@@ -516,6 +549,7 @@ export class KimiSession implements HarnessSession {
         }
       },
       onPermission: async (request: RequestPermissionRequest): Promise<RequestPermissionResponse> => {
+        completeReasoning();
         const projected = projectKimiApprovalRequest(turnId, request);
         return new Promise<RequestPermissionResponse>((resolve) => {
           this.#activeInteraction = {
@@ -532,6 +566,7 @@ export class KimiSession implements HarnessSession {
         });
       },
       onElicitation: async (request: CreateElicitationRequest): Promise<CreateElicitationResponse> => {
+        completeReasoning();
         const projected = projectKimiElicitationRequest(turnId, request);
         return new Promise<CreateElicitationResponse>((resolve) => {
           this.#activeInteraction = {
@@ -561,24 +596,21 @@ export class KimiSession implements HarnessSession {
     this.#closeActiveInteraction("cancelled");
 
     // Complete any open reasoning / message items
-    if (reasoningItem) {
-      this.#channel.emit({
-        kind: "event",
-        event: {
-          type: "item.completed",
-          turnId,
-          snapshot: { item: reasoningItem, outcome: { status: "succeeded" } },
-        },
-      });
-    }
+    completeReasoning();
 
-    if (agentMessageItem) {
+    const finalMessageItem = agentMessageItem as HostAgentMessageItem | null;
+    if (finalMessageItem) {
+      const item: HostAgentMessageItem = {
+        type: "agentMessage",
+        itemId: finalMessageItem.itemId,
+        text: finalMessageItem.text,
+      };
       this.#channel.emit({
         kind: "event",
         event: {
           type: "item.completed",
           turnId,
-          snapshot: { item: agentMessageItem, outcome: { status: "succeeded" } },
+          snapshot: { item, outcome: { status: "succeeded" } },
         },
       });
     }

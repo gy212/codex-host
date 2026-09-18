@@ -214,6 +214,30 @@ describe("KimiSession", () => {
       expect(eventTypes).toContain("item.completed");
       expect(eventTypes).toContain("turn.completed");
 
+      const itemStarts = outputs.filter(
+        (o) => o.kind === "event" && o.event.type === "item.started",
+      ) as Array<Extract<HarnessOutput, { kind: "event"; event: { type: "item.started" } }>>;
+      const reasoningStart = itemStarts.find((s) => s.event.item.type === "reasoning");
+      const agentStart = itemStarts.find((s) => s.event.item.type === "agentMessage");
+      expect((reasoningStart?.event.item as any)?.text).toBe("");
+      expect((agentStart?.event.item as any)?.text).toBe("");
+
+      const reasoningCompletedIndex = outputs.findIndex(
+        (o) =>
+          o.kind === "event" &&
+          o.event.type === "item.completed" &&
+          (o.event.snapshot.item as any).type === "reasoning",
+      );
+      const agentStartEventIndex = outputs.findIndex(
+        (o) =>
+          o.kind === "event" &&
+          o.event.type === "item.started" &&
+          (o.event.item as any).type === "agentMessage",
+      );
+      expect(reasoningCompletedIndex).toBeGreaterThan(-1);
+      expect(agentStartEventIndex).toBeGreaterThan(-1);
+      expect(reasoningCompletedIndex).toBeLessThan(agentStartEventIndex);
+
       const completed = outputs.find(
         (o) => o.kind === "event" && o.event.type === "turn.completed",
       );
