@@ -29,6 +29,7 @@ import {
 } from "@codexhost/shared-contracts";
 
 import { encodeKimiModelRef } from "./models.js";
+import { canonicalizeKimiToolName } from "./projection.js";
 
 const kimiHarnessId: HarnessId = harnessIdSchema.parse("kimi-code");
 
@@ -350,24 +351,13 @@ export async function parseKimiWireLog(
       });
     }
 
-    if (currentAgentText) {
-      const agentMessageItem: HostAgentMessageItem = {
-        type: "agentMessage",
-        itemId: hostItemIdSchema.parse(`item:${turnId}:agentMessage`),
-        text: currentAgentText,
-      };
-      items.push({
-        item: agentMessageItem,
-        outcome: { status: "succeeded" },
-      });
-    }
-
     // 2. Tool calls
     for (const [toolCallId, call] of turn.toolCalls.entries()) {
       const itemId = hostItemIdSchema.parse(`item:${turnId}:tool:${toolCallId.replace(/[^A-Za-z0-9._~-]/g, "_")}`);
       sourceToolItemIds.push(itemId);
 
-      const isBash = call.name.toLowerCase() === "bash" || call.name.toLowerCase() === "shell" || call.name.toLowerCase() === "terminal";
+      const canonicalName = canonicalizeKimiToolName(call.name, undefined, call.args);
+      const isBash = canonicalName.toLowerCase() === "bash" || canonicalName.toLowerCase() === "shell" || canonicalName.toLowerCase() === "terminal";
       const resultObj = (call.result && typeof call.result === "object") ? (call.result as Record<string, unknown>) : undefined;
       const outputText = resultObj?.output ? String(resultObj.output) : (call.result ? JSON.stringify(call.result) : undefined);
 
@@ -390,7 +380,7 @@ export async function parseKimiWireLog(
         const toolItem: HostToolExecutionItem = {
           type: "toolExecution",
           itemId,
-          toolName: call.name,
+          toolName: canonicalName,
           arguments: (call.args && typeof call.args === "object" && !Array.isArray(call.args)
             ? (call.args as JsonObject)
             : {}),
@@ -464,7 +454,21 @@ export async function parseKimiWireLog(
       }
     }
 
-    // 4. Determine turn outcome
+    // 4. Agent response
+    if (currentAgentText) {
+      const agentMessageItem: HostAgentMessageItem = {
+        type: "agentMessage",
+        itemId: hostItemIdSchema.parse(`item:${turnId}:agentMessage`),
+        text: currentAgentText,
+        phase: "final_answer",
+      };
+      items.push({
+        item: agentMessageItem,
+        outcome: { status: "succeeded" },
+      });
+    }
+
+    // 5. Determine turn outcome
     let outcome: HistoricalTurnOutcome;
     if (turn.reason === "completed") {
       outcome = { status: "succeeded" };

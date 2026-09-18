@@ -489,6 +489,107 @@ describe("KimiSession", () => {
         expect(cmdCompleted.event.snapshot.item.output).toBe("KIMI_PROBE_OK\n");
       }
     });
+
+    it("preserves canonical tool name for file write and emits reasoning and final answer in correct folding order", async () => {
+      const transport = new MockKimiTransport();
+
+      transport.promptMock = vi.fn(async (_text: string, handler: ActivePromptHandler) => {
+        // 1. Thinking
+        handler.onEvent({ type: "agent.thought", text: "Thinking about creating note.txt" });
+
+        // 2. Tool call: Write
+        const call = projectKimiToolUpdate({
+          sessionUpdate: "tool_call",
+          toolCallId: "tool-w1",
+          title: "Write",
+          kind: "edit",
+          rawInput: { path: "note.txt", content: "Note content" },
+        });
+        const update = projectKimiToolUpdate({
+          sessionUpdate: "tool_call_update",
+          toolCallId: "tool-w1",
+          title: "Writing note.txt",
+          status: "completed",
+        });
+        if (call) handler.onEvent(call);
+        if (update) handler.onEvent(update);
+
+        // 3. Final answer text
+        handler.onEvent({ type: "agent.text", text: "Created note.txt successfully." });
+
+        return { stopReason: "end_turn" };
+      });
+
+      const session = new KimiSession({
+        transport,
+        sessionId: "session-write",
+        cwd: "D:/project",
+        initialState: {},
+      });
+
+      const turnId = hostTurnIdSchema.parse("turn-write-1");
+      await session.execute({
+        type: "turn.start",
+        turnId,
+        input: [{ type: "text", text: "Create note.txt" }],
+      });
+
+      const outputs: HarnessOutput[] = [];
+      for await (const out of session.outputs) {
+        outputs.push(out);
+        if (out.kind === "event" && out.event.type === "turn.completed") break;
+      }
+
+      // 1. Reasoning item was started and completed before tool
+      const reasoningCompleted = outputs.find(
+        (o) => o.kind === "event" && o.event.type === "item.completed" && o.event.snapshot.item.type === "reasoning",
+      );
+      expect(reasoningCompleted).toBeDefined();
+
+      // 2. Tool execution was started with canonical name "Write" (not "Writing note.txt")
+      const toolStarted = outputs.find(
+        (o) => o.kind === "event" && o.event.type === "item.started" && o.event.item.type === "toolExecution",
+      );
+      expect(toolStarted).toBeDefined();
+      if (toolStarted && toolStarted.kind === "event" && toolStarted.event.type === "item.started" && toolStarted.event.item.type === "toolExecution") {
+        expect(toolStarted.event.item.toolName).toBe("Write");
+        expect(toolStarted.event.item.arguments).toEqual({ path: "note.txt", content: "Note content" });
+      }
+
+      const toolCompleted = outputs.find(
+        (o) => o.kind === "event" && o.event.type === "item.completed" && o.event.snapshot.item.type === "toolExecution",
+      );
+      expect(toolCompleted).toBeDefined();
+      if (toolCompleted && toolCompleted.kind === "event" && toolCompleted.event.type === "item.completed" && toolCompleted.event.snapshot.item.type === "toolExecution") {
+        expect(toolCompleted.event.snapshot.item.toolName).toBe("Write");
+      }
+
+      // 3. Final agent message completed with phase: "final_answer"
+      const agentCompleted = outputs.find(
+        (o) => o.kind === "event" && o.event.type === "item.completed" && o.event.snapshot.item.type === "agentMessage",
+      );
+      expect(agentCompleted).toBeDefined();
+      if (agentCompleted && agentCompleted.kind === "event" && agentCompleted.event.type === "item.completed" && agentCompleted.event.snapshot.item.type === "agentMessage") {
+        expect(agentCompleted.event.snapshot.item.text).toBe("Created note.txt successfully.");
+        expect(agentCompleted.event.snapshot.item.phase).toBe("final_answer");
+      }
+
+      // 4. Verify order of events: reasoning -> tool -> agentMessage
+      const eventOrder = outputs
+        .filter((o): o is Extract<HarnessOutput, { kind: "event" }> => o.kind === "event")
+        .map((o) => (o.event.type === "item.started" ? `start:${o.event.item.type}` : o.event.type === "item.completed" ? `complete:${o.event.snapshot.item.type}` : o.event.type));
+
+      expect(eventOrder).toContain("start:reasoning");
+      expect(eventOrder).toContain("start:toolExecution");
+      expect(eventOrder).toContain("start:agentMessage");
+
+      const reasoningStartIdx = eventOrder.indexOf("start:reasoning");
+      const toolStartIdx = eventOrder.indexOf("start:toolExecution");
+      const agentStartIdx = eventOrder.indexOf("start:agentMessage");
+
+      expect(reasoningStartIdx).toBeLessThan(toolStartIdx);
+      expect(toolStartIdx).toBeLessThan(agentStartIdx);
+    });
   });
 
   describe("Interactions", () => {

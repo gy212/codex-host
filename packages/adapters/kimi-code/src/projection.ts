@@ -182,6 +182,40 @@ export function formatElicitationResponse(
   return { action: "accept", content };
 }
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+export function canonicalizeKimiToolName(
+  name?: string | null,
+  kind?: string | null,
+  rawInput?: unknown,
+): string {
+  const trimmed = name?.trim();
+  const lower = trimmed?.toLowerCase() ?? "";
+
+  if (kind === "edit" || lower.startsWith("write") || lower.startsWith("writ")) {
+    const isEdit = isRecord(rawInput) && ("old_string" in rawInput || "oldText" in rawInput || "old" in rawInput);
+    return isEdit ? "Edit" : "Write";
+  }
+  if (kind === "edit" || lower.startsWith("edit")) {
+    return "Edit";
+  }
+  if (kind === "execute" || lower.startsWith("bash") || lower.startsWith("shell") || lower.startsWith("run")) {
+    return "Bash";
+  }
+  if (kind === "read" || lower.startsWith("read")) {
+    return "Read";
+  }
+  if (lower.startsWith("grep") || lower.startsWith("search")) {
+    return "Grep";
+  }
+  if (lower.startsWith("glob") || lower.startsWith("find")) {
+    return "Glob";
+  }
+  return trimmed || "Tool";
+}
+
 export interface ToolCallAccumulatorState {
   toolCallId: string;
   name: string;
@@ -203,7 +237,7 @@ export class KimiToolCallAccumulator {
       const sanitizedId = toolCallId.replace(/[^A-Za-z0-9._~-]/g, "_");
       state = {
         toolCallId,
-        name,
+        name: canonicalizeKimiToolName(name, kind),
         ...(kind ? { kind } : {}),
         contentAccumulator: "",
         status: "pending",
@@ -228,7 +262,8 @@ export function createHostItemFromToolState(
   state: ToolCallAccumulatorState,
   cwd?: string,
 ): HostItem {
-  const isBash = state.kind === "execute" || state.name.toLowerCase() === "bash" || state.name.toLowerCase() === "shell" || state.name.toLowerCase() === "terminal";
+  const canonicalName = canonicalizeKimiToolName(state.name, state.kind, state.rawInput);
+  const isBash = state.kind === "execute" || canonicalName.toLowerCase() === "bash" || canonicalName.toLowerCase() === "shell" || canonicalName.toLowerCase() === "terminal";
   const rawInput = state.rawInput as Record<string, unknown> | undefined;
 
   if (isBash) {
@@ -254,13 +289,26 @@ export function createHostItemFromToolState(
     return item;
   }
 
+  const args: Record<string, unknown> = (rawInput && typeof rawInput === "object" && !Array.isArray(rawInput)
+    ? { ...rawInput }
+    : {}) as Record<string, unknown>;
+
+  if (
+    (canonicalName === "Write" || state.kind === "edit") &&
+    !args.content &&
+    !args.text &&
+    !args.newText &&
+    !args.new_string &&
+    state.contentAccumulator
+  ) {
+    args.content = state.contentAccumulator;
+  }
+
   const toolItem: HostToolExecutionItem = {
     type: "toolExecution",
     itemId: state.itemId,
-    toolName: state.name,
-    arguments: (state.rawInput && typeof state.rawInput === "object" && !Array.isArray(state.rawInput)
-      ? state.rawInput
-      : {}) as JsonObject,
+    toolName: canonicalName,
+    arguments: args as JsonObject,
     ...(state.rawOutput !== undefined || state.contentAccumulator
       ? {
           output: {
