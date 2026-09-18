@@ -441,8 +441,8 @@ export class KimiSession implements HarnessSession {
     };
 
     const appendReasoningText = (text: string) => {
-      const reasoning = ensureReasoning();
       if (!text) return;
+      const reasoning = ensureReasoning();
       reasoning.text += text;
       this.#channel.emit({
         kind: "event",
@@ -457,48 +457,37 @@ export class KimiSession implements HarnessSession {
 
     const completeReasoning = () => {
       if (currentReasoning) {
-        if (!currentReasoning.text) {
-          currentReasoning.text = "思考中...";
+        if (currentReasoning.text.length > 0) {
+          const item: HostReasoningItem = {
+            type: "reasoning",
+            itemId: currentReasoning.itemId,
+            text: currentReasoning.text,
+          };
           this.#channel.emit({
             kind: "event",
             event: {
-              type: "item.updated",
+              type: "item.completed",
               turnId,
-              itemId: currentReasoning.itemId,
-              update: { type: "text.append", text: currentReasoning.text },
+              snapshot: { item, outcome: { status: "succeeded" } },
             },
           });
         }
-        const item: HostReasoningItem = {
-          type: "reasoning",
-          itemId: currentReasoning.itemId,
-          text: currentReasoning.text,
-        };
-        this.#channel.emit({
-          kind: "event",
-          event: {
-            type: "item.completed",
-            turnId,
-            snapshot: { item, outcome: { status: "succeeded" } },
-          },
-        });
         currentReasoning = null;
       }
     };
 
     let currentAgentMessage: HostAgentMessageItem | null = null;
     let messageIndex = 0;
-    let pendingText = "";
-    let pendingTextTimer: NodeJS.Timeout | null = null;
-    let hasEmittedAgentMessage = false;
+    let hasHadToolCallsInTurn = false;
 
-    const appendAgentText = (text: string) => {
+    const appendAgentText = (text: string, phase?: "commentary" | "final_answer") => {
       if (!text) return;
       if (!currentAgentMessage) {
         currentAgentMessage = {
           type: "agentMessage",
           itemId: hostItemIdSchema.parse(`item:${turnId}:agent:${messageIndex++}`),
           text: "",
+          ...(phase ? { phase } : {}),
         };
         this.#channel.emit({
           kind: "event",
@@ -521,43 +510,14 @@ export class KimiSession implements HarnessSession {
       });
     };
 
-    const flushPendingTextToAgentMessage = () => {
-      if (pendingTextTimer) {
-        clearTimeout(pendingTextTimer);
-        pendingTextTimer = null;
-      }
-      if (!pendingText) return;
-      completeReasoning();
-      hasEmittedAgentMessage = true;
-      appendAgentText(pendingText);
-      pendingText = "";
-    };
-
-    const flushPendingTextToReasoning = () => {
-      if (pendingTextTimer) {
-        clearTimeout(pendingTextTimer);
-        pendingTextTimer = null;
-      }
-      if (!pendingText) return;
-      appendReasoningText(pendingText);
-      completeReasoning();
-      pendingText = "";
-    };
-
-    const completeAgentMessage = () => {
-      if (pendingTextTimer) {
-        clearTimeout(pendingTextTimer);
-        pendingTextTimer = null;
-      }
-      if (pendingText) {
-        appendAgentText(pendingText);
-        pendingText = "";
-      }
+    const completeAgentMessage = (phase?: "commentary" | "final_answer") => {
       if (currentAgentMessage) {
+        const resolvedPhase = phase ?? currentAgentMessage.phase;
         const item: HostAgentMessageItem = {
           type: "agentMessage",
           itemId: currentAgentMessage.itemId,
           text: currentAgentMessage.text,
+          ...(resolvedPhase ? { phase: resolvedPhase } : {}),
         };
         this.#channel.emit({
           kind: "event",
@@ -568,7 +528,6 @@ export class KimiSession implements HarnessSession {
           },
         });
         currentAgentMessage = null;
-        hasEmittedAgentMessage = false;
       }
     };
 
@@ -578,31 +537,23 @@ export class KimiSession implements HarnessSession {
 
         switch (event.type) {
           case "agent.text": {
-            if (hasEmittedAgentMessage) {
-              appendAgentText(event.text);
-            } else {
-              pendingText += event.text;
-              if (pendingTextTimer) clearTimeout(pendingTextTimer);
-              pendingTextTimer = setTimeout(() => {
-                flushPendingTextToAgentMessage();
-              }, 120);
-            }
+            completeReasoning();
+            appendAgentText(event.text);
             break;
           }
           case "agent.thought": {
-            flushPendingTextToReasoning();
+            if (currentAgentMessage) {
+              completeAgentMessage("commentary");
+            }
             appendReasoningText(event.text);
             break;
           }
           case "tool.call": {
-            flushPendingTextToReasoning();
-            if (hasEmittedAgentMessage) {
-              completeAgentMessage();
-            }
-            if (!currentReasoning && !currentAgentMessage) {
-              ensureReasoning();
-            }
+            hasHadToolCallsInTurn = true;
             completeReasoning();
+            if (currentAgentMessage) {
+              completeAgentMessage("commentary");
+            }
             const state = accumulator.getOrCreate(event.toolCallId, turnId, event.name, event.kind);
             state.name = canonicalizeKimiToolName(event.name, event.kind, event.args);
             if (event.kind) state.kind = event.kind;
@@ -618,11 +569,10 @@ export class KimiSession implements HarnessSession {
             break;
           }
           case "tool.update": {
-            flushPendingTextToReasoning();
-            if (hasEmittedAgentMessage) {
-              completeAgentMessage();
-            }
             completeReasoning();
+            if (currentAgentMessage) {
+              completeAgentMessage("commentary");
+            }
             const state = accumulator.getOrCreate(event.toolCallId, turnId, event.name, event.kind);
             if (state.name === "Tool" && event.name) {
               state.name = canonicalizeKimiToolName(event.name, event.kind ?? state.kind, event.rawInput ?? state.rawInput);
@@ -696,12 +646,10 @@ export class KimiSession implements HarnessSession {
         }
       },
       onPermission: async (request: RequestPermissionRequest): Promise<RequestPermissionResponse> => {
-        flushPendingTextToReasoning();
-        if (!currentReasoning && !currentAgentMessage) {
-          ensureReasoning();
-        }
         completeReasoning();
-        completeAgentMessage();
+        if (currentAgentMessage) {
+          completeAgentMessage("commentary");
+        }
         const projected = projectKimiApprovalRequest(turnId, request);
         return new Promise<RequestPermissionResponse>((resolve) => {
           this.#activeInteraction = {
@@ -718,12 +666,10 @@ export class KimiSession implements HarnessSession {
         });
       },
       onElicitation: async (request: CreateElicitationRequest): Promise<CreateElicitationResponse> => {
-        flushPendingTextToReasoning();
-        if (!currentReasoning && !currentAgentMessage) {
-          ensureReasoning();
-        }
         completeReasoning();
-        completeAgentMessage();
+        if (currentAgentMessage) {
+          completeAgentMessage("commentary");
+        }
         const projected = projectKimiElicitationRequest(turnId, request);
         return new Promise<CreateElicitationResponse>((resolve) => {
           this.#activeInteraction = {
@@ -752,10 +698,9 @@ export class KimiSession implements HarnessSession {
 
     this.#closeActiveInteraction("cancelled");
 
-    // Flush any pending text and complete open items immediately
-    flushPendingTextToAgentMessage();
+    // Complete any open reasoning or message items immediately
     completeReasoning();
-    completeAgentMessage();
+    completeAgentMessage(hasHadToolCallsInTurn ? "final_answer" : undefined);
 
     let currentNativeTurn: HostTurnSnapshot | null = null;
     if (this.#activeTurn?.cancellationRequested) {

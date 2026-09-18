@@ -400,8 +400,9 @@ export async function parseKimiWireLog(
     const sourceToolItemIds: ReturnType<typeof hostItemIdSchema.parse>[] = [];
 
     // 1. Content and reasoning
-    let currentAgentText = "";
     let currentThoughtText = "";
+    let currentCommentaryText = "";
+    let currentAgentText = "";
 
     const toolOrders = Array.from(turn.toolCalls.values()).map((c) => c.order);
     const maxToolOrder = toolOrders.length > 0 ? Math.max(...toolOrders) : -1;
@@ -410,8 +411,7 @@ export async function parseKimiWireLog(
       if (part.thought) {
         currentThoughtText += (currentThoughtText ? "\n" : "") + part.text;
       } else if (maxToolOrder >= 0 && part.order < maxToolOrder) {
-        // Commentary before or between tool calls belongs to reasoning inside the process fold
-        currentThoughtText += (currentThoughtText ? "\n" : "") + part.text;
+        currentCommentaryText += (currentCommentaryText ? "\n" : "") + part.text;
       } else {
         currentAgentText += part.text;
       }
@@ -425,6 +425,19 @@ export async function parseKimiWireLog(
       };
       items.push({
         item: reasoningItem,
+        outcome: { status: "succeeded" },
+      });
+    }
+
+    if (currentCommentaryText) {
+      const commentaryItem: HostAgentMessageItem = {
+        type: "agentMessage",
+        itemId: hostItemIdSchema.parse(`item:${turnId}:commentary`),
+        text: currentCommentaryText,
+        phase: "commentary",
+      };
+      items.push({
+        item: commentaryItem,
         outcome: { status: "succeeded" },
       });
     }
@@ -477,6 +490,7 @@ export async function parseKimiWireLog(
         type: "agentMessage",
         itemId: hostItemIdSchema.parse(`item:${turnId}:agentMessage`),
         text: currentAgentText,
+        ...(maxToolOrder >= 0 ? { phase: "final_answer" as const } : {}),
       };
       items.push({
         item: agentMessageItem,

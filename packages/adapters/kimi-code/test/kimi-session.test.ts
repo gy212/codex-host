@@ -611,7 +611,7 @@ describe("KimiSession", () => {
       expect(agentCompleted).toBeDefined();
       if (agentCompleted && agentCompleted.kind === "event" && agentCompleted.event.type === "item.completed" && agentCompleted.event.snapshot.item.type === "agentMessage") {
         expect(agentCompleted.event.snapshot.item.text).toBe("Created note.txt successfully.");
-        expect(agentCompleted.event.snapshot.item.phase).toBeUndefined();
+        expect(agentCompleted.event.snapshot.item.phase).toBe("final_answer");
       }
 
       // 4. Verify order of events: reasoning -> tool -> agentMessage
@@ -793,11 +793,11 @@ describe("KimiSession", () => {
       });
     });
 
-    it("emits reasoning envelope before elicitation and finishes turn cleanly with final answer", async () => {
+    it("emits reasoning envelope when thought occurs before elicitation and finishes turn cleanly with final answer", async () => {
       const transport = new MockKimiTransport();
 
       transport.promptMock = vi.fn(async (_text: string, handler: ActivePromptHandler) => {
-        // Direct elicitation without explicit thought chunk
+        handler.onEvent({ type: "agent.thought", text: "Thinking about options..." });
         const elicitationReq: CreateElicitationRequest = {
           sessionId: "s",
           mode: "form",
@@ -859,16 +859,7 @@ describe("KimiSession", () => {
       );
       expect(reasoningCompleted).toBeDefined();
       if (reasoningCompleted && reasoningCompleted.kind === "event" && reasoningCompleted.event.type === "item.completed" && reasoningCompleted.event.snapshot.item.type === "reasoning") {
-        expect(reasoningCompleted.event.snapshot.item.text).toBe("思考中...");
-      }
-
-      // Verify reasoning item was updated with matching text BEFORE completion
-      const reasoningUpdated = outputs.find(
-        (o) => o.kind === "event" && o.event.type === "item.updated" && o.event.update.type === "text.append",
-      );
-      expect(reasoningUpdated).toBeDefined();
-      if (reasoningUpdated && reasoningUpdated.kind === "event" && reasoningUpdated.event.type === "item.updated" && reasoningUpdated.event.update.type === "text.append") {
-        expect(reasoningUpdated.event.update.text).toBe("思考中...");
+        expect(reasoningCompleted.event.snapshot.item.text).toBe("Thinking about options...");
       }
 
       // Verify final agent message has no commentary phase
@@ -1030,7 +1021,7 @@ describe("KimiSession", () => {
   });
 
   describe("Folding & Turn Completion Regressions", () => {
-    it("routes pre-tool text to reasoning without starting agentMessage prematurely", async () => {
+    it("tags pre-tool text as commentary and post-tool terminal text as final_answer without fake reasoning", async () => {
       const transport = new MockKimiTransport();
       transport.promptMock = vi.fn(async (_text: string, handler: ActivePromptHandler) => {
         // 1. Text arrives before tool call
@@ -1091,33 +1082,46 @@ describe("KimiSession", () => {
         if (out.kind === "event" && out.event.type === "turn.completed") break;
       }
 
-      // Check all agentMessage starts
-      const agentMessageStarts = outputs.filter(
-        (o) => o.kind === "event" && o.event.type === "item.started" && o.event.item.type === "agentMessage",
+      // Check all agentMessage completions
+      const agentMessages = outputs.filter(
+        (o) =>
+          o.kind === "event" &&
+          o.event.type === "item.completed" &&
+          o.event.snapshot.item.type === "agentMessage",
       );
-      // There must be EXACTLY ONE agentMessage (the final answer), NOT two!
-      expect(agentMessageStarts).toHaveLength(1);
+      expect(agentMessages).toHaveLength(2);
 
-      // Check that pre-tool text was absorbed into reasoning
+      // Pre-tool message has phase: commentary
+      const commentaryMsg = agentMessages[0];
+      if (
+        commentaryMsg &&
+        commentaryMsg.kind === "event" &&
+        commentaryMsg.event.type === "item.completed" &&
+        commentaryMsg.event.snapshot.item.type === "agentMessage"
+      ) {
+        expect(commentaryMsg.event.snapshot.item.text).toBe("No existing python files found. Writing quicksort...");
+        expect(commentaryMsg.event.snapshot.item.phase).toBe("commentary");
+      }
+
+      // Final answer message has phase: final_answer
+      const finalMsg = agentMessages[1];
+      if (
+        finalMsg &&
+        finalMsg.kind === "event" &&
+        finalMsg.event.type === "item.completed" &&
+        finalMsg.event.snapshot.item.type === "agentMessage"
+      ) {
+        expect(finalMsg.event.snapshot.item.text).toBe("Done. Created quicksort.py.");
+        expect(finalMsg.event.snapshot.item.phase).toBe("final_answer");
+      }
+
+      // No fake reasoning items were generated
       const reasoningItems = outputs.filter(
         (o) => o.kind === "event" && o.event.type === "item.completed" && o.event.snapshot.item.type === "reasoning",
       );
-      expect(reasoningItems.length).toBeGreaterThanOrEqual(1);
-      const reasoningTexts = reasoningItems.map(
-        (o) => (o.kind === "event" && o.event.type === "item.completed" && o.event.snapshot.item.type === "reasoning" ? o.event.snapshot.item.text : ""),
-      ).join(" ");
-      expect(reasoningTexts).toContain("No existing python files found. Writing quicksort...");
+      expect(reasoningItems).toHaveLength(0);
 
-      // Final agent message text
-      const finalAgentMessage = outputs.find(
-        (o) => o.kind === "event" && o.event.type === "item.completed" && o.event.snapshot.item.type === "agentMessage",
-      );
-      expect(finalAgentMessage).toBeDefined();
-      if (finalAgentMessage && finalAgentMessage.kind === "event" && finalAgentMessage.event.type === "item.completed" && finalAgentMessage.event.snapshot.item.type === "agentMessage") {
-        expect(finalAgentMessage.event.snapshot.item.text).toBe("Done. Created quicksort.py.");
-      }
-
-      // Order check: toolExecution happened AFTER reasoning, and agentMessage happened AFTER toolExecution
+      // Order check: commentary -> toolExecution -> finalAnswer
       const eventTypes = outputs.map((o) => {
         if (o.kind === "event") {
           if (o.event.type === "item.started") return `start:${o.event.item.type}`;
@@ -1127,8 +1131,8 @@ describe("KimiSession", () => {
         return o.kind;
       });
 
-      expect(eventTypes.indexOf("complete:reasoning")).toBeLessThan(eventTypes.indexOf("start:toolExecution"));
-      expect(eventTypes.indexOf("complete:toolExecution")).toBeLessThan(eventTypes.indexOf("start:agentMessage"));
+      expect(eventTypes.indexOf("complete:agentMessage")).toBeLessThan(eventTypes.indexOf("start:toolExecution"));
+      expect(eventTypes.indexOf("complete:toolExecution")).toBeLessThan(eventTypes.lastIndexOf("start:agentMessage"));
     });
 
     it("correlates Native Turn with trailing newline in user input without 2000ms delay", async () => {

@@ -3,6 +3,8 @@ import os from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
+import type { HostAgentMessageItem } from "@codexhost/harness-adapter";
+
 import {
   createKimiNativeSessionRef,
   createKimiNativeTurnRef,
@@ -413,12 +415,16 @@ describe("Kimi Code History & Diff", () => {
       expect(usage?.contextWindowTokens).toBe(200_000);
     });
 
-    it("routes pre-tool commentary to reasoning and keeps final answer in agentMessage", async () => {
+    it("routes thoughts to reasoning, commentary to commentary message, and terminal text to final answer", async () => {
       const wire = [
         JSON.stringify({ type: "turn.prompt", turnId: 0, time: 1000, input: [{ type: "text", text: "write code\n" }] }),
         JSON.stringify({
           type: "context.append_loop_event",
-          event: { type: "content.part", turnId: 0, part: { type: "text", text: "Thinking about quicksort..." } },
+          event: { type: "content.part", turnId: 0, part: { type: "thought", text: "Planning quicksort implementation..." } },
+        }),
+        JSON.stringify({
+          type: "context.append_loop_event",
+          event: { type: "content.part", turnId: 0, part: { type: "text", text: "I will write quicksort.py now." } },
         }),
         JSON.stringify({
           type: "context.append_loop_event",
@@ -441,18 +447,29 @@ describe("Kimi Code History & Diff", () => {
       expect(turn).toBeDefined();
       if (!turn) return;
 
-      // Reasoning should have the pre-tool text
+      // Reasoning should have ONLY the thought text
       const reasoning = turn.items.find((i) => i.item.type === "reasoning");
       expect(reasoning).toBeDefined();
       if (reasoning && reasoning.item.type === "reasoning") {
-        expect(reasoning.item.text).toContain("Thinking about quicksort...");
+        expect(reasoning.item.text).toBe("Planning quicksort implementation...");
       }
 
-      // Agent message should ONLY have the final answer
-      const agentMsg = turn.items.find((i) => i.item.type === "agentMessage");
-      expect(agentMsg).toBeDefined();
-      if (agentMsg && agentMsg.item.type === "agentMessage") {
-        expect(agentMsg.item.text).toBe("Successfully created quicksort.py.");
+      // Commentary message should have the pre-tool text with phase: commentary
+      const commentaryMsg = turn.items.find(
+        (i) => i.item.type === "agentMessage" && (i.item as HostAgentMessageItem).phase === "commentary",
+      );
+      expect(commentaryMsg).toBeDefined();
+      if (commentaryMsg && commentaryMsg.item.type === "agentMessage") {
+        expect(commentaryMsg.item.text).toBe("I will write quicksort.py now.");
+      }
+
+      // Final agent message should have the post-tool text with phase: final_answer
+      const finalMsg = turn.items.find(
+        (i) => i.item.type === "agentMessage" && (i.item as HostAgentMessageItem).phase === "final_answer",
+      );
+      expect(finalMsg).toBeDefined();
+      if (finalMsg && finalMsg.item.type === "agentMessage") {
+        expect(finalMsg.item.text).toBe("Successfully created quicksort.py.");
       }
 
       // Timing must be properly populated
