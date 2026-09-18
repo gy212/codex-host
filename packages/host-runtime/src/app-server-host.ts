@@ -146,6 +146,7 @@ import {
   OfficialRuntimeScope,
 } from "./codex-runtime/official-runtime-scope.js";
 import type { HostUpdateCoordinator } from "./update-coordinator.js";
+import { RuntimeLogger, type RuntimeLogFields } from "./runtime-logger.js";
 
 const SUBAGENT_TERMINAL_REFRESH_DELAYS_MS = [0, 50, 100, 150] as const;
 const THREAD_USAGE_UPDATED_METHOD = "codexhost/thread/usage/updated";
@@ -303,6 +304,7 @@ export function officialEnvironment(source: NodeJS.ProcessEnv): NodeJS.ProcessEn
     "CODEXHOST_DATA_DIR",
     "CODEXHOST_DEFAULT_AGENT",
     "CODEXHOST_HOST_RUNTIME_PATH",
+    "CODEXHOST_LOG_DIR",
     "CODEXHOST_PI_COMMAND",
     "CODEXHOST_ENABLE_CLAUDE_CODE",
     "CODEXHOST_CLAUDE_COMMAND",
@@ -523,6 +525,7 @@ export class AppServerHost {
   readonly #desktopRequests = new DesktopRequestQueue();
   #drainActiveWorkOnInputEnd = false;
   #desktopInputEnded = false;
+  readonly #runtimeLogger: RuntimeLogger;
 
   constructor(options: AppServerHostOptions) {
     this.#options = {
@@ -533,6 +536,7 @@ export class AppServerHost {
     };
     this.#writer = new OrderedWriter(this.#options.desktopOutput);
     const environment = this.#options.environment ?? process.env;
+    this.#runtimeLogger = new RuntimeLogger(environment);
     const permanentHome = path.resolve(environment.CODEX_HOME ?? path.join(os.homedir(), ".codex"));
     this.#ownsOfficialRuntimeScope = options.officialRuntimeScope === undefined;
     this.#officialRuntimeScope =
@@ -614,7 +618,7 @@ export class AppServerHost {
       environment: this.#options.environment ?? process.env,
       repository: this.#repository,
       consumeOutputs: (thread) => this.#consumeHarnessOutputs(thread),
-      diagnose: (error) => this.#diagnose(error),
+      diagnose: (error, fields) => this.#diagnose(error, fields),
       subagentRunning: (threadId) => this.#subagentThreadStatuses.get(threadId) === "active",
       idleRelease: {
         queue: this.#desktopRequests,
@@ -3778,7 +3782,12 @@ export class AppServerHost {
     if (event.type === "session.faulted") {
       this.#externalSteering.fault(thread.id, new Error(event.error.message));
       thread.stateObserver.fault(new Error(event.error.message));
-      this.#diagnose(`${thread.harnessId} Harness Session faulted: ${event.error.message}`);
+      this.#diagnose(`${thread.harnessId} Harness Session faulted: ${event.error.message}`, {
+        event: "harness.session.faulted",
+        harnessId: thread.harnessId,
+        hostThreadId: thread.id,
+        nativeSessionId: thread.sessionId,
+      });
       return;
     }
 
@@ -3836,6 +3845,20 @@ export class AppServerHost {
           },
         };
       }
+    }
+    if (
+      event.type === "turn.completed" &&
+      event.outcome.status === "failed" &&
+      event.outcome.error.message !== "External Turn identity could not be persisted"
+    ) {
+      this.#diagnose(`${thread.harnessId} Harness Turn failed: ${event.outcome.error.message}`, {
+        event: "harness.turn.failed",
+        harnessId: thread.harnessId,
+        hostThreadId: thread.id,
+        hostTurnId: event.turnId,
+        nativeSessionId: event.nativeTurnRef?.nativeSessionId,
+        nativeTurnKey: event.nativeTurnRef?.nativeTurnKey,
+      });
     }
     const result = projection.projector.project(event as ProjectableHostEvent);
     if (event.type === "turn.started") {
@@ -4371,7 +4394,15 @@ export class AppServerHost {
     void task.catch((error) => this.#diagnose(error));
   }
 
-  #diagnose(error: unknown): void {
-    this.#options.diagnosticOutput.write(`codexhost Host Runtime: ${errorMessage(error)}\n`);
+  #diagnose(error: unknown, fields: RuntimeLogFields = {}): void {
+    const message = errorMessage(error);
+    this.#options.diagnosticOutput.write(`codexhost Host Runtime: ${message}\n`);
+    const { event, ...context } = fields;
+    this.#runtimeLogger.write({
+      level: "error",
+      event: typeof event === "string" ? event : "host.diagnostic",
+      message,
+      fields: context,
+    });
   }
 }

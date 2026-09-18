@@ -50,8 +50,12 @@ export function createKimiNativeTurnRef(sessionId: string, turnId: number | stri
   });
 }
 
-export function getKimiCodeHome(homeDirectory?: string): string {
-  return process.env.KIMI_CODE_HOME || (homeDirectory ? path.join(homeDirectory, ".kimi-code") : path.join(os.homedir(), ".kimi-code"));
+export function getKimiCodeHome(
+  homeDirectory?: string,
+  environment: NodeJS.ProcessEnv = process.env,
+): string {
+  return environment.KIMI_CODE_HOME ||
+    (homeDirectory ? path.join(homeDirectory, ".kimi-code") : path.join(os.homedir(), ".kimi-code"));
 }
 
 export interface KimiSessionIndexEntry {

@@ -165,11 +165,29 @@ describe("KimiSession", () => {
         return { stopReason: "end_turn" };
       });
 
+      let snapshotReads = 0;
       const session = new KimiSession({
         transport,
         sessionId: "session-turn",
         cwd: "D:/project",
         initialState: {},
+        readNativeSnapshot: async () => ({
+          turns: snapshotReads++ === 0
+            ? []
+            : [
+                {
+                  nativeTurnRef: {
+                    formatVersion: 1,
+                    harnessId: "kimi-code" as any,
+                    nativeSessionId: "session-turn",
+                    nativeTurnKey: "turn:0",
+                  },
+                  input: [{ type: "text", text: "Say hello" }],
+                  items: [],
+                  outcome: { status: "succeeded" },
+                },
+              ],
+        }),
       });
 
       const turnId = hostTurnIdSchema.parse("turn-1");
@@ -202,7 +220,31 @@ describe("KimiSession", () => {
       expect(completed).toBeDefined();
       if (completed && completed.kind === "event" && completed.event.type === "turn.completed") {
         expect(completed.event.outcome.status).toBe("succeeded");
-        expect(completed.event.nativeTurnRef).toBeUndefined();
+        expect(completed.event.nativeTurnRef?.nativeTurnKey).toBe("turn:0");
+      }
+    });
+
+    it("does not report success without a durable Native Turn identity", async () => {
+      const transport = new MockKimiTransport();
+      const session = new KimiSession({
+        transport,
+        sessionId: "session-missing-identity",
+        cwd: "D:/project",
+        initialState: {},
+        readNativeSnapshot: async () => ({ turns: [] }),
+      });
+
+      await session.execute({
+        type: "turn.start",
+        turnId: hostTurnIdSchema.parse("turn-missing-identity"),
+        input: [{ type: "text", text: "Say hello" }],
+      });
+
+      for await (const output of session.outputs) {
+        if (output.kind !== "event" || output.event.type !== "turn.completed") continue;
+        expect(output.event.outcome.status).toBe("failed");
+        expect(output.event.nativeTurnRef).toBeUndefined();
+        break;
       }
     });
 

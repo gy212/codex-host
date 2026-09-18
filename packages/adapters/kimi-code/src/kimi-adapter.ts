@@ -192,7 +192,7 @@ export class KimiAdapter implements HarnessAdapter {
     }
 
     // 2. Read native config.toml
-    const kimiHome = getKimiCodeHome(this.#options.homeDirectory);
+    const kimiHome = getKimiCodeHome(this.#options.homeDirectory, environment);
     const configPath = path.join(kimiHome, "config.toml");
     let nativeConfig: KimiNativeConfig | null = null;
 
@@ -287,6 +287,7 @@ export class KimiAdapter implements HarnessAdapter {
 
     const environment = { ...process.env, ...this.#options.environment, ...input.environment };
     const cwd = input.cwd ?? process.cwd();
+    const kimiCodeHome = getKimiCodeHome(this.#options.homeDirectory, environment);
 
     let executable: string;
     try {
@@ -299,12 +300,14 @@ export class KimiAdapter implements HarnessAdapter {
       return err("notInstalled", error instanceof Error ? error.message : "Kimi CLI not found");
     }
 
+    let session: KimiSession | null = null;
     const transport = this.#createTransport({
       cwd,
       command: executable,
       environment,
       ...(this.#options.commandTimeoutMs ? { commandTimeoutMs: this.#options.commandTimeoutMs } : {}),
       ...(this.#options.closeTimeoutMs ? { closeTimeoutMs: this.#options.closeTimeoutMs } : {}),
+      onFault: (error) => session?.handleTransportFault(error),
     });
 
     if (input.kind === "create") {
@@ -321,11 +324,12 @@ export class KimiAdapter implements HarnessAdapter {
         const configOptions = await applyRequestedConfig(transport, sessionInfo.configOptions, requested);
         const state = stateFromConfig(sessionInfo.sessionId, cwd, configOptions);
 
-        const session = new KimiSession({
+        session = new KimiSession({
           transport,
           sessionId: sessionInfo.sessionId,
           cwd,
           initialState: state,
+          kimiCodeHome,
           ...(this.#options.homeDirectory ? { homeDirectory: this.#options.homeDirectory } : {}),
         });
 
@@ -345,6 +349,7 @@ export class KimiAdapter implements HarnessAdapter {
 
       // Verify native session exists
       const located = await locateKimiSession(sessionId, {
+        kimiCodeHome,
         ...(this.#options.homeDirectory ? { homeDirectory: this.#options.homeDirectory } : {}),
       });
 
@@ -371,11 +376,12 @@ export class KimiAdapter implements HarnessAdapter {
         const configOptions = await applyRequestedConfig(transport, sessionInfo.configOptions, requested);
         const state = stateFromConfig(sessionInfo.sessionId, cwd, configOptions);
 
-        const session = new KimiSession({
+        session = new KimiSession({
           transport,
           sessionId: sessionInfo.sessionId,
           cwd,
           initialState: state,
+          kimiCodeHome,
           ...(this.#options.homeDirectory ? { homeDirectory: this.#options.homeDirectory } : {}),
         });
 

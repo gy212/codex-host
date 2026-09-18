@@ -62,12 +62,11 @@ import {
 import type {
   ActivePromptHandler,
   KimiTransportEvent,
+  KimiTransportError,
 } from "./acp-transport.js";
 import type { KimiAcpTransportLike } from "./kimi-adapter.js";
 import {
   createKimiNativeSessionRef,
-  locateKimiSession,
-  parseKimiWireLog,
   readKimiSessionSnapshot,
 } from "./history.js";
 import {
@@ -87,6 +86,8 @@ import {
 } from "./projection.js";
 
 const kimiHarnessId: HarnessId = harnessIdSchema.parse("kimi-code");
+const nativeTurnFlushTimeoutMs = 2_000;
+const nativeTurnFlushPollMs = 50;
 
 export const kimiSessionCapabilities: HarnessSessionCapabilities = {
   configuration: {
@@ -132,6 +133,8 @@ export interface KimiSessionOptions {
   initialState: HarnessSessionState;
   initialUsage?: HostUsage | null;
   homeDirectory?: string;
+  kimiCodeHome?: string;
+  readNativeSnapshot?: () => Promise<HostThreadSnapshot>;
 }
 
 export class KimiSession implements HarnessSession {
@@ -145,8 +148,9 @@ export class KimiSession implements HarnessSession {
   #cwd: string;
   #state: HarnessSessionState;
   #usage: HostUsage | null = null;
-  #homeDirectory?: string;
+  #readNativeSnapshot: () => Promise<HostThreadSnapshot>;
   #closed = false;
+  #faulted = false;
   #activeTurn: {
     turnId: HostTurnId;
     cancellationRequested: boolean;
@@ -161,7 +165,11 @@ export class KimiSession implements HarnessSession {
     this.#cwd = options.cwd;
     this.#state = { ...options.initialState };
     this.#usage = options.initialUsage ?? null;
-    if (options.homeDirectory) this.#homeDirectory = options.homeDirectory;
+    this.#readNativeSnapshot = options.readNativeSnapshot ?? (() =>
+      readKimiSessionSnapshot(options.sessionId, {
+        ...(options.homeDirectory ? { homeDirectory: options.homeDirectory } : {}),
+        ...(options.kimiCodeHome ? { kimiCodeHome: options.kimiCodeHome } : {}),
+      }));
     this.outputs = this.#channel.outputs;
     this.#transport.setSessionEventHandler((event) => this.#handleSessionEvent(event));
   }
@@ -214,9 +222,7 @@ export class KimiSession implements HarnessSession {
       return err("sessionBusy", "Cannot read snapshot while a turn is active");
     }
     try {
-      const snapshot = await readKimiSessionSnapshot(this.#sessionId, {
-        ...(this.#homeDirectory ? { homeDirectory: this.#homeDirectory } : {}),
-      });
+      const snapshot = await this.#readNativeSnapshot();
       return ok({
         ...snapshot,
         state: { ...this.#state },
@@ -249,7 +255,7 @@ export class KimiSession implements HarnessSession {
       | PermissionModeSelectCompleted
     >
   > {
-    if (this.#closed) {
+    if (this.#closed || this.#faulted) {
       return err("invalidState", "Kimi session is closed");
     }
 
@@ -276,10 +282,7 @@ export class KimiSession implements HarnessSession {
     this.#closed = true;
     this.#transport.setSessionEventHandler(null);
 
-    if (this.#activeInteraction) {
-      this.#activeInteraction.resolve({ outcome: { outcome: "cancelled" }, action: "cancel" });
-      this.#activeInteraction = null;
-    }
+    this.#closeActiveInteraction("cancelled");
 
     if (this.#activeTurn) {
       this.#activeTurn.cancellationRequested = true;
@@ -294,6 +297,24 @@ export class KimiSession implements HarnessSession {
     }
 
     this.#channel.end();
+  }
+
+  handleTransportFault(error: KimiTransportError): void {
+    if (this.#closed || this.#faulted) return;
+    this.#faulted = true;
+    this.#closeActiveInteraction("cancelled");
+    this.#channel.emit({
+      kind: "event",
+      event: {
+        type: "session.faulted",
+        error: {
+          code: error.kind,
+          message: error.message,
+          retryable: false,
+          ...(error.diagnostic ? { diagnostic: error.diagnostic } : {}),
+        },
+      },
+    });
   }
 
   #applyConfigOptions(configOptions: unknown[]): void {
@@ -323,13 +344,7 @@ export class KimiSession implements HarnessSession {
   }
 
   async #readNativeTurns(): Promise<HostTurnSnapshot[]> {
-    const located = await locateKimiSession(this.#sessionId, {
-      ...(this.#homeDirectory ? { homeDirectory: this.#homeDirectory } : {}),
-    });
-    if (!located) return [];
-    const { readFile } = await import("node:fs/promises");
-    const wireContent = await readFile(`${located.mainHomeDir}/wire.jsonl`, "utf8");
-    return parseKimiWireLog(wireContent, this.#sessionId, located.mainHomeDir);
+    return (await this.#readNativeSnapshot()).turns;
   }
 
   async #handleTurnStart(command: TurnStartCommand): Promise<HarnessResult<TurnStartAccepted>> {
@@ -354,8 +369,17 @@ export class KimiSession implements HarnessSession {
     this.#channel.emit({ kind: "event", event: { type: "turn.started", turnId } });
 
     const inputText = command.input.map((i) => i.text).join("\n");
-    const nativeTurnsBefore = await this.#readNativeTurns().catch(() => null);
     const accumulator = new KimiToolCallAccumulator();
+    let previousNativeTurnKeys: Set<string> | null = null;
+    let identityError: Error | null = null;
+
+    try {
+      previousNativeTurnKeys = new Set(
+        (await this.#readNativeTurns()).map((turn) => turn.nativeTurnRef.nativeTurnKey),
+      );
+    } catch (error) {
+      identityError = error instanceof Error ? error : new Error(String(error));
+    }
 
     let agentMessageItem: HostAgentMessageItem | null = null;
     let reasoningItem: HostReasoningItem | null = null;
@@ -534,6 +558,8 @@ export class KimiSession implements HarnessSession {
       promptError = error instanceof Error ? error : new Error(String(error));
     }
 
+    this.#closeActiveInteraction("cancelled");
+
     // Complete any open reasoning / message items
     if (reasoningItem) {
       this.#channel.emit({
@@ -557,71 +583,57 @@ export class KimiSession implements HarnessSession {
       });
     }
 
-    // Poll briefly for native wire log flush
-    await delay(300);
+    let currentNativeTurn: HostTurnSnapshot | null = null;
+    if (previousNativeTurnKeys && !promptError) {
+      const correlated = await this.#waitForNativeTurn(previousNativeTurnKeys, inputText);
+      currentNativeTurn = correlated.turn;
+      identityError = correlated.error;
+    }
 
-    let nativeReason: string | undefined;
-    let currentNativeTurn: HostTurnSnapshot | undefined;
-
-    if (nativeTurnsBefore) {
-      try {
-        const previousKeys = new Set(nativeTurnsBefore.map((turn) => turn.nativeTurnRef.nativeTurnKey));
-        const newTurns = (await this.#readNativeTurns()).filter(
-          (turn) => !previousKeys.has(turn.nativeTurnRef.nativeTurnKey),
-        );
-        currentNativeTurn = newTurns.find(
-          (turn) => turn.input.map((input) => input.text).join("\n") === inputText,
-        ) ?? (newTurns.length === 1 ? newTurns[0] : undefined);
-
-        if (currentNativeTurn) {
-          if (currentNativeTurn.outcome.status === "succeeded") {
-            nativeReason = "completed";
-          } else if (currentNativeTurn.outcome.status === "cancelled") {
-            nativeReason = "cancelled";
-          } else if (currentNativeTurn.outcome.status === "failed") {
-            nativeReason = "failed";
-          }
-
-          // Emit any file change item discovered natively
-          for (const itemSnap of currentNativeTurn.items) {
-            if (itemSnap.item.type === "fileChange") {
-              this.#channel.emit({
-                kind: "event",
-                event: {
-                  type: "item.started",
-                  turnId,
-                  item: itemSnap.item,
-                },
-              });
-              this.#channel.emit({
-                kind: "event",
-                event: {
-                  type: "item.completed",
-                  turnId,
-                  snapshot: itemSnap,
-                },
-              });
-            }
-          }
-        }
-      } catch {
-        // Prompt outcome remains authoritative when the current native turn cannot be correlated.
+    if (currentNativeTurn) {
+      for (const itemSnap of currentNativeTurn.items) {
+        if (itemSnap.item.type !== "fileChange") continue;
+        this.#channel.emit({
+          kind: "event",
+          event: { type: "item.started", turnId, item: itemSnap.item },
+        });
+        this.#channel.emit({
+          kind: "event",
+          event: { type: "item.completed", turnId, snapshot: itemSnap },
+        });
       }
     }
 
     // Determine Turn Outcome
     let turnOutcome: TurnOutcome;
-    if (this.#activeTurn?.cancellationRequested || promptResponse?.stopReason === "cancelled" || nativeReason === "cancelled") {
+    if (
+      this.#activeTurn?.cancellationRequested ||
+      promptResponse?.stopReason === "cancelled" ||
+      currentNativeTurn?.outcome.status === "cancelled"
+    ) {
       turnOutcome = {
         status: "cancelled",
         reason: "Turn was cancelled",
       };
-    } else if (promptError || nativeReason === "failed") {
+    } else if (promptError || currentNativeTurn?.outcome.status === "failed") {
       turnOutcome = {
         status: "failed",
         error: {
           code: "nativeFailure",
-          message: promptError ? promptError.message : "Native turn reported failure",
+          message: promptError
+            ? promptError.message
+            : currentNativeTurn?.outcome.status === "failed"
+              ? currentNativeTurn.outcome.error.message
+              : "Native turn reported failure",
+          retryable: false,
+        },
+      };
+    } else if (!currentNativeTurn) {
+      turnOutcome = {
+        status: "failed",
+        error: {
+          code: "protocolError",
+          message: identityError?.message ?? "Kimi did not persist a unique Native Turn identity",
           retryable: false,
         },
       };
@@ -643,6 +655,60 @@ export class KimiSession implements HarnessSession {
 
     this.#activeTurn = null;
     this.#activeTurnPromise = null;
+  }
+
+  async #waitForNativeTurn(
+    previousKeys: ReadonlySet<string>,
+    inputText: string,
+  ): Promise<{ turn: HostTurnSnapshot | null; error: Error | null }> {
+    const deadline = Date.now() + nativeTurnFlushTimeoutMs;
+    let lastError: Error | null = null;
+    do {
+      try {
+        const added = (await this.#readNativeTurns()).filter(
+          (turn) => !previousKeys.has(turn.nativeTurnRef.nativeTurnKey),
+        );
+        const matching = added.filter(
+          (turn) => turn.input.map((input) => input.text).join("\n") === inputText,
+        );
+        if (matching.length > 1 || added.length > 1) {
+          return {
+            turn: null,
+            error: new Error("Multiple Native Turns appeared while correlating the Kimi prompt"),
+          };
+        }
+        const turn = matching[0];
+        if (turn && turn.outcome.status !== "unknown") return { turn, error: null };
+      } catch (error) {
+        lastError = error instanceof Error ? error : new Error(String(error));
+      }
+      if (Date.now() >= deadline) break;
+      await delay(nativeTurnFlushPollMs);
+    } while (true);
+    return {
+      turn: null,
+      error: lastError ?? new Error("Timed out waiting for Kimi to persist the Native Turn"),
+    };
+  }
+
+  #closeActiveInteraction(reason: "cancelled" | "expired" | "superseded"): void {
+    const interaction = this.#activeInteraction;
+    if (!interaction) return;
+    this.#activeInteraction = null;
+    interaction.resolve(
+      interaction.type === "approval"
+        ? { outcome: { outcome: "cancelled" } }
+        : { action: "cancel" },
+    );
+    this.#channel.emit({
+      kind: "event",
+      event: {
+        type: "interaction.closed",
+        interactionId: interaction.id,
+        turnId: interaction.interaction.turnId,
+        reason,
+      },
+    });
   }
 
   async #handleTurnCancel(command: TurnCancelCommand): Promise<HarnessResult<TurnCancelAccepted>> {
