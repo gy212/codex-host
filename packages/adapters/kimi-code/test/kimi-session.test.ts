@@ -564,14 +564,14 @@ describe("KimiSession", () => {
         expect(toolCompleted.event.snapshot.item.toolName).toBe("Write");
       }
 
-      // 3. Final agent message completed with phase: "final_answer"
+      // 3. Final agent message completed
       const agentCompleted = outputs.find(
         (o) => o.kind === "event" && o.event.type === "item.completed" && o.event.snapshot.item.type === "agentMessage",
       );
       expect(agentCompleted).toBeDefined();
       if (agentCompleted && agentCompleted.kind === "event" && agentCompleted.event.type === "item.completed" && agentCompleted.event.snapshot.item.type === "agentMessage") {
         expect(agentCompleted.event.snapshot.item.text).toBe("Created note.txt successfully.");
-        expect(agentCompleted.event.snapshot.item.phase).toBe("final_answer");
+        expect(agentCompleted.event.snapshot.item.phase).toBeUndefined();
       }
 
       // 4. Verify order of events: reasoning -> tool -> agentMessage

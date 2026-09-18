@@ -460,7 +460,6 @@ export async function parseKimiWireLog(
         type: "agentMessage",
         itemId: hostItemIdSchema.parse(`item:${turnId}:agentMessage`),
         text: currentAgentText,
-        phase: "final_answer",
       };
       items.push({
         item: agentMessageItem,

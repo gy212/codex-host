@@ -443,7 +443,6 @@ export class KimiSession implements HarnessSession {
           type: "agentMessage",
           itemId: hostItemIdSchema.parse(`item:${turnId}:agent:${messageIndex++}`),
           text: "",
-          phase: "commentary",
         };
         this.#channel.emit({
           kind: "event",
@@ -466,13 +465,12 @@ export class KimiSession implements HarnessSession {
       });
     };
 
-    const completeAgentMessage = (phase: "commentary" | "final_answer" = "commentary") => {
+    const completeAgentMessage = () => {
       if (currentAgentMessage) {
         const item: HostAgentMessageItem = {
           type: "agentMessage",
           itemId: currentAgentMessage.itemId,
           text: currentAgentMessage.text,
-          phase,
         };
         this.#channel.emit({
           kind: "event",
@@ -502,7 +500,7 @@ export class KimiSession implements HarnessSession {
           }
           case "tool.call": {
             completeReasoning();
-            completeAgentMessage("commentary");
+            completeAgentMessage();
             const state = accumulator.getOrCreate(event.toolCallId, turnId, event.name, event.kind);
             state.name = canonicalizeKimiToolName(event.name, event.kind, event.args);
             if (event.kind) state.kind = event.kind;
@@ -519,7 +517,7 @@ export class KimiSession implements HarnessSession {
           }
           case "tool.update": {
             completeReasoning();
-            completeAgentMessage("commentary");
+            completeAgentMessage();
             const state = accumulator.getOrCreate(event.toolCallId, turnId, event.name, event.kind);
             if (state.name === "Tool" && event.name) {
               state.name = canonicalizeKimiToolName(event.name, event.kind ?? state.kind, event.rawInput ?? state.rawInput);
@@ -540,6 +538,14 @@ export class KimiSession implements HarnessSession {
 
             if (event.status === "completed" || event.status === "failed") {
               state.status = event.status;
+              if (!state.itemStartedEmitted) {
+                state.itemStartedEmitted = true;
+                const item = createHostItemFromToolState(state, this.#cwd);
+                this.#channel.emit({
+                  kind: "event",
+                  event: { type: "item.started", turnId, item },
+                });
+              }
               const item = createHostItemFromToolState(state, this.#cwd);
               const outcome: HostItemOutcome = event.status === "completed"
                 ? { status: "succeeded" }
@@ -586,7 +592,7 @@ export class KimiSession implements HarnessSession {
       },
       onPermission: async (request: RequestPermissionRequest): Promise<RequestPermissionResponse> => {
         completeReasoning();
-        completeAgentMessage("commentary");
+        completeAgentMessage();
         const projected = projectKimiApprovalRequest(turnId, request);
         return new Promise<RequestPermissionResponse>((resolve) => {
           this.#activeInteraction = {
@@ -604,7 +610,7 @@ export class KimiSession implements HarnessSession {
       },
       onElicitation: async (request: CreateElicitationRequest): Promise<CreateElicitationResponse> => {
         completeReasoning();
-        completeAgentMessage("commentary");
+        completeAgentMessage();
         const projected = projectKimiElicitationRequest(turnId, request);
         return new Promise<CreateElicitationResponse>((resolve) => {
           this.#activeInteraction = {
@@ -633,8 +639,9 @@ export class KimiSession implements HarnessSession {
 
     this.#closeActiveInteraction("cancelled");
 
-    // Complete any open reasoning / message items
+    // Complete any open reasoning / message items immediately
     completeReasoning();
+    completeAgentMessage();
 
     let currentNativeTurn: HostTurnSnapshot | null = null;
     if (previousNativeTurnKeys && !promptError) {
@@ -656,8 +663,6 @@ export class KimiSession implements HarnessSession {
         });
       }
     }
-
-    completeAgentMessage("final_answer");
 
     // Determine Turn Outcome
     let turnOutcome: TurnOutcome;
