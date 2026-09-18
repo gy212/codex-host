@@ -263,8 +263,12 @@ export async function parseKimiWireLog(
       if (turn.completedAtMs === undefined && typeof record.time === "number") {
         turn.completedAtMs = record.time;
       }
-      if (record.outcome === "cancelled" || record.outcome === "interrupted") {
+      if (record.outcome === "cancelled" || record.outcome === "interrupted" || record.outcome === "aborted") {
         turn.reason = "cancelled";
+      } else if (record.outcome === "failed") {
+        turn.reason = "failed";
+      } else if (record.outcome === "done" && !turn.reason) {
+        turn.reason = "completed";
       }
     } else if (type === "prompt.completed") {
       const turnId = typeof record.turnId === "number" ? record.turnId : Array.from(turns.keys()).pop() ?? 0;
@@ -272,7 +276,23 @@ export async function parseKimiWireLog(
       if (turn.completedAtMs === undefined && typeof record.time === "number") {
         turn.completedAtMs = record.time;
       }
-      if (record.reason === "cancelled") {
+      if (record.reason === "cancelled" || record.reason === "user_cancelled" || record.reason === "aborted") {
+        turn.reason = "cancelled";
+      } else if (record.reason === "failed" || record.reason === "error") {
+        turn.reason = "failed";
+      } else if (record.reason === "completed" && !turn.reason) {
+        turn.reason = "completed";
+      }
+    } else if (type === "turn.cancel") {
+      const turnId = typeof record.turnId === "number" ? record.turnId : Array.from(turns.keys()).pop() ?? 0;
+      const turn = getOrCreateTurn(turnId);
+      turn.reason = "cancelled";
+    } else if (type === "turn.step.interrupted") {
+      const turnId = typeof record.turnId === "number" ? record.turnId : Array.from(turns.keys()).pop() ?? 0;
+      const turn = getOrCreateTurn(turnId);
+      if (record.reason === "error") {
+        turn.reason = "failed";
+      } else if (record.reason === "aborted") {
         turn.reason = "cancelled";
       }
     } else if (type === "usage.record") {
@@ -527,11 +547,11 @@ export async function parseKimiWireLog(
 
     // 5. Determine turn outcome
     let outcome: HistoricalTurnOutcome;
-    if (turn.reason === "completed") {
+    if (turn.reason === "completed" || turn.reason === "done" || turn.reason === "success") {
       outcome = { status: "succeeded" };
-    } else if (turn.reason === "cancelled") {
+    } else if (turn.reason === "cancelled" || turn.reason === "user_cancelled" || turn.reason === "aborted") {
       outcome = { status: "cancelled", reason: "Turn was cancelled" };
-    } else if (turn.reason === "failed") {
+    } else if (turn.reason === "failed" || turn.reason === "error") {
       outcome = {
         status: "failed",
         error: { code: "nativeFailure", message: "Turn ended with native failure", retryable: false },

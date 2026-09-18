@@ -27,6 +27,7 @@ import type {
 import {
   KimiSession,
 } from "../src/kimi-session.js";
+import { createKimiNativeTurnRef } from "../src/history.js";
 import type { KimiAcpTransportLike } from "../src/kimi-adapter.js";
 import { projectKimiToolUpdate, type ActivePromptHandler, type SessionEventHandler } from "../src/acp-transport.js";
 import { encodeKimiModelRef } from "../src/models.js";
@@ -260,6 +261,7 @@ describe("KimiSession", () => {
         cwd: "D:/project",
         initialState: {},
         readNativeSnapshot: async () => ({ turns: [] }),
+        nativeTurnFlushTimeoutMs: 100,
       });
 
       await session.execute({
@@ -272,6 +274,40 @@ describe("KimiSession", () => {
         if (output.kind !== "event" || output.event.type !== "turn.completed") continue;
         expect(output.event.outcome.status).toBe("failed");
         expect(output.event.nativeTurnRef).toBeUndefined();
+        break;
+      }
+    });
+
+    it("recovers gracefully when a native turn exists on disk but final record was delayed", async () => {
+      const transport = new MockKimiTransport();
+      const session = new KimiSession({
+        transport,
+        sessionId: "session-delayed-flush",
+        cwd: "D:/project",
+        initialState: {},
+        nativeTurnFlushTimeoutMs: 100,
+        readNativeSnapshot: async () => ({
+          turns: [
+            {
+              nativeTurnRef: createKimiNativeTurnRef("session-delayed-flush", 0),
+              input: [{ type: "text", text: "Say hello" }],
+              items: [],
+              outcome: { status: "unknown", reason: "Missing turn.ended record" },
+            },
+          ],
+        }),
+      });
+
+      await session.execute({
+        type: "turn.start",
+        turnId: hostTurnIdSchema.parse("turn-delayed-flush"),
+        input: [{ type: "text", text: "Say hello" }],
+      });
+
+      for await (const output of session.outputs) {
+        if (output.kind !== "event" || output.event.type !== "turn.completed") continue;
+        expect(output.event.outcome.status).toBe("succeeded");
+        expect(output.event.nativeTurnRef?.nativeTurnKey).toBe("turn:0");
         break;
       }
     });

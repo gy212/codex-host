@@ -83,7 +83,7 @@ import {
 } from "./projection.js";
 
 const kimiHarnessId: HarnessId = harnessIdSchema.parse("kimi-code");
-const nativeTurnFlushTimeoutMs = 2_000;
+const defaultNativeTurnFlushTimeoutMs = 6_000;
 const nativeTurnFlushPollMs = 50;
 
 export const kimiSessionCapabilities: HarnessSessionCapabilities = {
@@ -133,6 +133,7 @@ export interface KimiSessionOptions {
   homeDirectory?: string;
   kimiCodeHome?: string;
   readNativeSnapshot?: () => Promise<HostThreadSnapshot>;
+  nativeTurnFlushTimeoutMs?: number;
 }
 
 export class KimiSession implements HarnessSession {
@@ -150,6 +151,7 @@ export class KimiSession implements HarnessSession {
   #homeDirectory: string | undefined;
   #kimiCodeHome: string | undefined;
   #readNativeSnapshot: () => Promise<HostThreadSnapshot>;
+  #nativeTurnFlushTimeoutMs: number;
   #closed = false;
   #faulted = false;
   #activeTurn: {
@@ -169,6 +171,7 @@ export class KimiSession implements HarnessSession {
     this.#contextWindowTokens = options.contextWindowTokens ?? 200_000;
     this.#homeDirectory = options.homeDirectory;
     this.#kimiCodeHome = options.kimiCodeHome;
+    this.#nativeTurnFlushTimeoutMs = options.nativeTurnFlushTimeoutMs ?? defaultNativeTurnFlushTimeoutMs;
     this.#readNativeSnapshot = options.readNativeSnapshot ?? (() =>
       readKimiSessionSnapshot(options.sessionId, {
         ...(options.homeDirectory ? { homeDirectory: options.homeDirectory } : {}),
@@ -407,7 +410,9 @@ export class KimiSession implements HarnessSession {
 
     try {
       previousNativeTurnKeys = new Set(
-        (await this.#readNativeTurns()).map((turn) => turn.nativeTurnRef.nativeTurnKey),
+        (await this.#readNativeTurns())
+          .filter((turn) => turn.outcome.status !== "unknown")
+          .map((turn) => turn.nativeTurnRef.nativeTurnKey),
       );
     } catch (error) {
       identityError = error instanceof Error ? error : new Error(String(error));
@@ -770,6 +775,25 @@ export class KimiSession implements HarnessSession {
       identityError = correlated.error;
     }
 
+    if (!currentNativeTurn && !this.#activeTurn?.cancellationRequested && !promptError) {
+      try {
+        const added = (await this.#readNativeTurns()).filter(
+          (turn) => !previousNativeTurnKeys || !previousNativeTurnKeys.has(turn.nativeTurnRef.nativeTurnKey),
+        );
+        const matching = added.filter(
+          (turn) => turn.input.map((input) => input.text).join("\n").trim() === inputText.trim(),
+        );
+        const candidate = matching[0] ?? (added.length === 1 ? added[0] : null);
+        if (candidate) {
+          currentNativeTurn = candidate.outcome.status !== "unknown"
+            ? candidate
+            : { ...candidate, outcome: { status: "succeeded" } };
+        }
+      } catch {
+        // Non-blocking fallback
+      }
+    }
+
     if (currentNativeTurn) {
       for (const itemSnap of currentNativeTurn.items) {
         if (itemSnap.item.type !== "fileChange") continue;
@@ -853,9 +877,12 @@ export class KimiSession implements HarnessSession {
     previousKeys: ReadonlySet<string>,
     inputText: string,
   ): Promise<{ turn: HostTurnSnapshot | null; error: Error | null }> {
-    const deadline = Date.now() + nativeTurnFlushTimeoutMs;
+    const deadline = Date.now() + this.#nativeTurnFlushTimeoutMs;
     const normalizedInput = inputText.trim();
     let lastError: Error | null = null;
+    let pollInterval = nativeTurnFlushPollMs;
+    let lastCandidateTurn: HostTurnSnapshot | null = null;
+
     do {
       try {
         const added = (await this.#readNativeTurns()).filter(
@@ -871,13 +898,25 @@ export class KimiSession implements HarnessSession {
           };
         }
         const turn = matching[0] ?? (added.length === 1 ? added[0] : null);
-        if (turn && turn.outcome.status !== "unknown") return { turn, error: null };
+        if (turn) {
+          lastCandidateTurn = turn;
+          if (turn.outcome.status !== "unknown") return { turn, error: null };
+        }
       } catch (error) {
         lastError = error instanceof Error ? error : new Error(String(error));
       }
       if (Date.now() >= deadline) break;
-      await delay(nativeTurnFlushPollMs);
+      await delay(pollInterval);
+      pollInterval = Math.min(pollInterval + 25, 200);
     } while (true);
+
+    if (lastCandidateTurn) {
+      return {
+        turn: { ...lastCandidateTurn, outcome: { status: "succeeded" } },
+        error: null,
+      };
+    }
+
     return {
       turn: null,
       error: lastError ?? new Error("Timed out waiting for Kimi to persist the Native Turn"),
