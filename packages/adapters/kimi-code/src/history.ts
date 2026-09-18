@@ -715,3 +715,73 @@ export async function readKimiSessionUsage(
     return null;
   }
 }
+
+export function findKimiWireCutIndex(wireContent: string, targetTurnCount: number): number {
+  const lines = wireContent.split("\n");
+  if (targetTurnCount <= 0) return 0;
+
+  let cutIndex = -1;
+  let currentTurn = -1;
+
+  for (let i = 0; i < lines.length; i++) {
+    const rawLine = lines[i];
+    if (!rawLine) continue;
+    const raw = rawLine.trim();
+    if (!raw) continue;
+    let record: Record<string, unknown>;
+    try {
+      record = JSON.parse(raw) as Record<string, unknown>;
+    } catch {
+      continue;
+    }
+
+    if (typeof record.turnId === "number") {
+      currentTurn = record.turnId;
+    } else if (
+      record.type === "context.append_loop_event" &&
+      typeof (record.event as Record<string, unknown> | undefined)?.turnId === "string"
+    ) {
+      currentTurn = parseInt((record.event as Record<string, unknown>).turnId as string, 10);
+    }
+
+    if (currentTurn >= targetTurnCount) {
+      cutIndex = i;
+      break;
+    }
+
+    if (
+      currentTurn === targetTurnCount - 1 &&
+      (record.type === "prompt.completed" || record.type === "turn.ended")
+    ) {
+      for (let j = i + 1; j < lines.length; j++) {
+        const nextLine = lines[j];
+        if (!nextLine) continue;
+        const nextRaw = nextLine.trim();
+        if (!nextRaw) continue;
+        try {
+          const nextRecord = JSON.parse(nextRaw) as Record<string, unknown>;
+          if (
+            nextRecord.type === "context.append_message" &&
+            (nextRecord.message as Record<string, unknown> | undefined)?.role === "user"
+          ) {
+            cutIndex = j;
+            break;
+          }
+          if (
+            nextRecord.type === "turn.prompt" ||
+            (typeof nextRecord.turnId === "number" && nextRecord.turnId >= targetTurnCount)
+          ) {
+            cutIndex = j;
+            break;
+          }
+        } catch {
+          // ignore malformed
+        }
+      }
+      if (cutIndex !== -1) break;
+    }
+  }
+
+  return cutIndex === -1 ? lines.length : cutIndex;
+}
+

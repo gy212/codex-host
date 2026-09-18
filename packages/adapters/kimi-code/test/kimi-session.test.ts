@@ -99,7 +99,7 @@ describe("KimiSession", () => {
     expect(session.harnessId).toBe("kimi-code");
     expect(session.capabilities.configuration.selectModel).toBe(true);
     expect(session.capabilities.history.fork).toBe(true);
-    expect(session.capabilities.history.rollbackLastTurn).toBe(false);
+    expect(session.capabilities.history.rollbackLastTurn).toBe(true);
     expect(session.initialState.effectivePermissionModeId).toBe("default");
     expect(session.nativeSessionRef.nativeSessionId).toBe("session-123");
     expect(session.nativeSessionRef.locator).toEqual({ cwd: "D:/project" });

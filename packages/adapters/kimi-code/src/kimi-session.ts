@@ -96,7 +96,7 @@ export const kimiSessionCapabilities: HarnessSessionCapabilities = {
   history: {
     fork: true,
     forkAcrossCwd: false,
-    rollbackLastTurn: false,
+    rollbackLastTurn: true,
   },
   subagents: {
     observe: false,

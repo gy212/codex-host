@@ -1,4 +1,4 @@
-import { readFile } from "node:fs/promises";
+import { readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
 
 import type {
@@ -8,6 +8,7 @@ import type {
   HarnessResult,
   HarnessSession,
   HarnessSessionState,
+  HostThreadSnapshot,
   InspectHarnessInput,
   OpenSessionInput,
 } from "@codexhost/harness-adapter";
@@ -33,8 +34,10 @@ import {
 import { resolveKimiExecutable } from "./command.js";
 import {
   createKimiNativeSessionRef,
+  findKimiWireCutIndex,
   getKimiCodeHome,
   locateKimiSession,
+  readKimiSessionSnapshot,
   readKimiSessionUsage,
 } from "./history.js";
 import {
@@ -94,6 +97,10 @@ export interface KimiAdapterDependencies {
     environment?: NodeJS.ProcessEnv;
     homeDirectory?: string;
   }) => string;
+  readSessionSnapshot?: (
+    sessionId: string,
+    options?: { homeDirectory?: string; kimiCodeHome?: string },
+  ) => Promise<HostThreadSnapshot>;
 }
 
 export interface KimiAdapterOptions {
@@ -278,10 +285,6 @@ export class KimiAdapter implements HarnessAdapter {
       return err("invalidState", "Adapter is closed");
     }
 
-    // Explicitly reject unsupported operations
-    if (input.kind === "rollbackLastTurn") {
-      return err("unsupported", "Kimi Code does not support rollbackLastTurn");
-    }
 
     const environment = { ...process.env, ...this.#options.environment, ...input.environment };
     const cwd = input.cwd ?? process.cwd();
@@ -484,6 +487,196 @@ export class KimiAdapter implements HarnessAdapter {
         return err(
           "nativeFailure",
           `Failed to fork Kimi session: ${error instanceof Error ? error.message : String(error)}`,
+        );
+      }
+    }
+
+    if (input.kind === "rollbackLastTurn") {
+      const sourceSessionId = input.sourceRef.nativeSessionId;
+
+      const located = await locateKimiSession(sourceSessionId, {
+        kimiCodeHome,
+        ...(this.#options.homeDirectory ? { homeDirectory: this.#options.homeDirectory } : {}),
+      });
+
+      if (!located) {
+        await transport.close().catch(() => undefined);
+        return err("sessionNotFound", `Kimi source native session not found: ${sourceSessionId}`);
+      }
+
+      let sourceSnapshot: HostThreadSnapshot;
+      try {
+        const readSnapshot = this.#deps.readSessionSnapshot ?? readKimiSessionSnapshot;
+        sourceSnapshot = await readSnapshot(sourceSessionId, {
+          kimiCodeHome,
+          ...(this.#options.homeDirectory ? { homeDirectory: this.#options.homeDirectory } : {}),
+        });
+      } catch (error) {
+        await transport.close().catch(() => undefined);
+        return err(
+          "nativeFailure",
+          `Failed to read Kimi source session snapshot: ${error instanceof Error ? error.message : String(error)}`,
+        );
+      }
+
+      const sourceTurnCount = sourceSnapshot.turns.length;
+
+      if (sourceTurnCount <= 1) {
+        try {
+          const sessionInfo = await transport.openSession({ kind: "create", cwd });
+          if (input.permissionModeId && !isKimiModeId(input.permissionModeId)) {
+            throw new Error(`Unsupported permission mode: ${input.permissionModeId}`);
+          }
+          const requested = [
+            ...(input.model ? [{ id: "model" as const, value: decodeKimiModelRefId(input.model.id) }] : []),
+            ...(input.thinkingOptionId ? [{ id: "thinking" as const, value: input.thinkingOptionId }] : []),
+            ...(input.permissionModeId ? [{ id: "mode" as const, value: input.permissionModeId }] : []),
+          ];
+          const configOptions = await applyRequestedConfig(transport, sessionInfo.configOptions, requested);
+          const state = stateFromConfig(sessionInfo.sessionId, cwd, configOptions);
+
+          const readSessionSnapshot = this.#deps.readSessionSnapshot;
+          session = new KimiSession({
+            transport,
+            sessionId: sessionInfo.sessionId,
+            cwd,
+            initialState: state,
+            contextWindowTokens,
+            kimiCodeHome,
+            ...(this.#options.homeDirectory ? { homeDirectory: this.#options.homeDirectory } : {}),
+            ...(readSessionSnapshot
+              ? {
+                  readNativeSnapshot: () =>
+                    readSessionSnapshot(sessionInfo.sessionId, {
+                      kimiCodeHome,
+                      ...(this.#options.homeDirectory ? { homeDirectory: this.#options.homeDirectory } : {}),
+                    }),
+                }
+              : {}),
+          });
+
+          this.#sessions.add(session);
+          return ok(session);
+        } catch (error) {
+          await transport.close().catch(() => undefined);
+          return err(
+            "nativeFailure",
+            `Failed to rollback Kimi session: ${error instanceof Error ? error.message : String(error)}`,
+          );
+        }
+      }
+
+      const targetTurnCount = sourceTurnCount - 1;
+      let resumeTransport: KimiAcpTransportLike | null = null;
+      try {
+        const sessionInfo = await transport.openSession({
+          kind: "fork",
+          sessionId: sourceSessionId,
+          cwd,
+        });
+
+        await transport.close().catch(() => undefined);
+
+        const forkedLocated = await locateKimiSession(sessionInfo.sessionId, {
+          kimiCodeHome,
+          ...(this.#options.homeDirectory ? { homeDirectory: this.#options.homeDirectory } : {}),
+        });
+
+        if (forkedLocated) {
+          const wirePath = path.join(forkedLocated.mainHomeDir, "wire.jsonl");
+          try {
+            const wireContent = await readFile(wirePath, "utf8");
+            const cutIndex = findKimiWireCutIndex(wireContent, targetTurnCount);
+            const lines = wireContent.split("\n");
+            const truncatedContent = lines.slice(0, cutIndex).join("\n") + "\n";
+            await writeFile(wirePath, truncatedContent, "utf8");
+          } catch {
+            // Ignore if wire log is not present or cannot be written
+          }
+
+          const statePath = path.join(forkedLocated.sessionDir, "state.json");
+          try {
+            const rawState = await readFile(statePath, "utf8");
+            const stateObj = JSON.parse(rawState) as Record<string, unknown>;
+            const lastTurn = sourceSnapshot.turns[targetTurnCount - 1];
+            const lastPromptText = lastTurn?.input[0]?.text ?? "";
+            stateObj.lastPrompt = lastPromptText;
+            stateObj.lastTurnReason = "completed";
+            stateObj.updatedAt = Date.now();
+            await writeFile(statePath, JSON.stringify(stateObj, null, 2), "utf8");
+          } catch {
+            // Non-fatal if state.json cannot be parsed
+          }
+        }
+
+        resumeTransport = this.#createTransport({
+          cwd,
+          command: executable,
+          environment,
+          ...(this.#options.commandTimeoutMs ? { commandTimeoutMs: this.#options.commandTimeoutMs } : {}),
+          ...(this.#options.closeTimeoutMs ? { closeTimeoutMs: this.#options.closeTimeoutMs } : {}),
+          onFault: (error) => session?.handleTransportFault(error),
+        });
+
+        const resumeInfo = await resumeTransport.openSession({
+          kind: "load",
+          sessionId: sessionInfo.sessionId,
+          cwd,
+        });
+
+        if (input.permissionModeId && !isKimiModeId(input.permissionModeId)) {
+          throw new Error(`Unsupported permission mode: ${input.permissionModeId}`);
+        }
+        const requested = [
+          ...(input.model ? [{ id: "model" as const, value: decodeKimiModelRefId(input.model.id) }] : []),
+          ...(input.thinkingOptionId ? [{ id: "thinking" as const, value: input.thinkingOptionId }] : []),
+          ...(input.permissionModeId ? [{ id: "mode" as const, value: input.permissionModeId }] : []),
+        ];
+        const configOptions = await applyRequestedConfig(resumeTransport, resumeInfo.configOptions, requested);
+        const state = stateFromConfig(sessionInfo.sessionId, cwd, configOptions);
+
+        const initialUsage =
+          (await readKimiSessionUsage(sessionInfo.sessionId, {
+            kimiCodeHome,
+            ...(this.#options.homeDirectory ? { homeDirectory: this.#options.homeDirectory } : {}),
+            contextWindowTokens,
+          })) ??
+          (await readKimiSessionUsage(sourceSessionId, {
+            kimiCodeHome,
+            ...(this.#options.homeDirectory ? { homeDirectory: this.#options.homeDirectory } : {}),
+            contextWindowTokens,
+          }));
+
+        const readSessionSnapshot = this.#deps.readSessionSnapshot;
+        session = new KimiSession({
+          transport: resumeTransport,
+          sessionId: sessionInfo.sessionId,
+          cwd,
+          initialState: state,
+          initialUsage,
+          contextWindowTokens,
+          kimiCodeHome,
+          ...(this.#options.homeDirectory ? { homeDirectory: this.#options.homeDirectory } : {}),
+          ...(readSessionSnapshot
+            ? {
+                readNativeSnapshot: () =>
+                  readSessionSnapshot(sessionInfo.sessionId, {
+                    kimiCodeHome,
+                    ...(this.#options.homeDirectory ? { homeDirectory: this.#options.homeDirectory } : {}),
+                  }),
+              }
+            : {}),
+        });
+
+        this.#sessions.add(session);
+        return ok(session);
+      } catch (error) {
+        if (resumeTransport) {
+          await resumeTransport.close().catch(() => undefined);
+        }
+        return err(
+          "nativeFailure",
+          `Failed to rollback Kimi session: ${error instanceof Error ? error.message : String(error)}`,
         );
       }
     }

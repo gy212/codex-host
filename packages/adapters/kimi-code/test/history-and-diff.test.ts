@@ -9,6 +9,7 @@ import {
   createKimiNativeSessionRef,
   createKimiNativeTurnRef,
   extractKimiUsageFromWireLog,
+  findKimiWireCutIndex,
   locateKimiSession,
   parseKimiWireLog,
   readKimiSessionSnapshot,
@@ -496,6 +497,47 @@ describe("Kimi Code History & Diff", () => {
       expect(turn.startedAtMs).toBe(2000);
       expect(turn.completedAtMs).toBe(6000);
       expect(turn.outcome.status).toBe("cancelled");
+    });
+  });
+
+  describe("findKimiWireCutIndex", () => {
+    it("returns 0 when targetTurnCount is 0", () => {
+      const wire = [
+        JSON.stringify({ type: "turn.prompt", turnId: 0, input: [{ type: "text", text: "hello" }] }),
+        JSON.stringify({ type: "turn.ended", turnId: 0 }),
+      ].join("\n");
+
+      expect(findKimiWireCutIndex(wire, 0)).toBe(0);
+    });
+
+    it("cuts wire log right before the start of the next turn", () => {
+      const wireLines = [
+        JSON.stringify({ type: "turn.prompt", turnId: 0, input: [{ type: "text", text: "first" }] }),
+        JSON.stringify({ type: "turn.ended", turnId: 0 }),
+        JSON.stringify({ type: "prompt.completed", turnId: 0, reason: "completed" }),
+        JSON.stringify({ type: "turn.prompt", turnId: 1, input: [{ type: "text", text: "second" }] }),
+        JSON.stringify({ type: "turn.ended", turnId: 1 }),
+      ];
+      const wire = wireLines.join("\n");
+
+      const cut = findKimiWireCutIndex(wire, 1);
+      expect(cut).toBe(3);
+      const remainingLines = wire.split("\n").slice(0, cut);
+      expect(remainingLines).toHaveLength(3);
+    });
+
+    it("cuts before context.append_message user if it precedes turn.prompt", () => {
+      const wireLines = [
+        JSON.stringify({ type: "turn.prompt", turnId: 0, input: [{ type: "text", text: "first" }] }),
+        JSON.stringify({ type: "turn.ended", turnId: 0 }),
+        JSON.stringify({ type: "prompt.completed", reason: "completed" }),
+        JSON.stringify({ type: "context.append_message", message: { role: "user", content: "second" } }),
+        JSON.stringify({ type: "turn.prompt", turnId: 1, input: [{ type: "text", text: "second" }] }),
+      ];
+      const wire = wireLines.join("\n");
+
+      const cut = findKimiWireCutIndex(wire, 1);
+      expect(cut).toBe(3);
     });
   });
 });
