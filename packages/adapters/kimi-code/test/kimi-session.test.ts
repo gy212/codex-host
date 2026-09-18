@@ -98,7 +98,7 @@ describe("KimiSession", () => {
 
     expect(session.harnessId).toBe("kimi-code");
     expect(session.capabilities.configuration.selectModel).toBe(true);
-    expect(session.capabilities.history.fork).toBe(false);
+    expect(session.capabilities.history.fork).toBe(true);
     expect(session.capabilities.history.rollbackLastTurn).toBe(false);
     expect(session.initialState.effectivePermissionModeId).toBe("default");
     expect(session.nativeSessionRef.nativeSessionId).toBe("session-123");

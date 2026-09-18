@@ -73,7 +73,7 @@ export interface KimiAcpTransportLike {
     authReady: boolean;
   }>;
   openSession(input: {
-    kind: "create" | "resume" | "load";
+    kind: "create" | "resume" | "load" | "fork";
     sessionId?: string;
     cwd?: string;
   }): Promise<{
@@ -279,9 +279,6 @@ export class KimiAdapter implements HarnessAdapter {
     }
 
     // Explicitly reject unsupported operations
-    if (input.kind === "fork") {
-      return err("unsupported", "Kimi Code does not support checkpoint history fork");
-    }
     if (input.kind === "rollbackLastTurn") {
       return err("unsupported", "Kimi Code does not support rollbackLastTurn");
     }
@@ -321,7 +318,8 @@ export class KimiAdapter implements HarnessAdapter {
       nativeConfig = null;
     }
 
-    const selectedModelAlias = input.model ? decodeKimiModelRefId(input.model.id) : nativeConfig?.defaultModel;
+    const selectedModelAlias =
+      "model" in input && input.model ? decodeKimiModelRefId(input.model.id) : nativeConfig?.defaultModel;
     const contextWindowTokens = resolveKimiContextWindow(selectedModelAlias, nativeConfig);
 
     if (input.kind === "create") {
@@ -415,6 +413,77 @@ export class KimiAdapter implements HarnessAdapter {
         return err(
           "nativeFailure",
           `Failed to resume Kimi session: ${error instanceof Error ? error.message : String(error)}`,
+        );
+      }
+    }
+
+    if (input.kind === "fork") {
+      const sourceSessionId = input.sourceRef.nativeSessionId;
+
+      // Verify source native session exists
+      const located = await locateKimiSession(sourceSessionId, {
+        kimiCodeHome,
+        ...(this.#options.homeDirectory ? { homeDirectory: this.#options.homeDirectory } : {}),
+      });
+
+      if (!located) {
+        await transport.close().catch(() => undefined);
+        return err("sessionNotFound", `Kimi source native session not found: ${sourceSessionId}`);
+      }
+
+      if (
+        input.checkpoint.harnessId !== this.harnessId ||
+        input.checkpoint.nativeSessionId !== sourceSessionId
+      ) {
+        await transport.close().catch(() => undefined);
+        return err("checkpointNotFound", "Kimi Checkpoint does not belong to the source Native Session");
+      }
+
+      if (located.state?.cwd && path.resolve(cwd) !== path.resolve(located.state.cwd)) {
+        await transport.close().catch(() => undefined);
+        return err("unsupported", "Kimi Code cannot fork across different working directories");
+      }
+
+      try {
+        const sessionInfo = await transport.openSession({
+          kind: "fork",
+          sessionId: sourceSessionId,
+          cwd,
+        });
+
+        const configOptions = sessionInfo.configOptions ?? [];
+        const state = stateFromConfig(sessionInfo.sessionId, cwd, configOptions);
+
+        const initialUsage =
+          (await readKimiSessionUsage(sessionInfo.sessionId, {
+            kimiCodeHome,
+            ...(this.#options.homeDirectory ? { homeDirectory: this.#options.homeDirectory } : {}),
+            contextWindowTokens,
+          })) ??
+          (await readKimiSessionUsage(sourceSessionId, {
+            kimiCodeHome,
+            ...(this.#options.homeDirectory ? { homeDirectory: this.#options.homeDirectory } : {}),
+            contextWindowTokens,
+          }));
+
+        session = new KimiSession({
+          transport,
+          sessionId: sessionInfo.sessionId,
+          cwd,
+          initialState: state,
+          initialUsage,
+          contextWindowTokens,
+          kimiCodeHome,
+          ...(this.#options.homeDirectory ? { homeDirectory: this.#options.homeDirectory } : {}),
+        });
+
+        this.#sessions.add(session);
+        return ok(session);
+      } catch (error) {
+        await transport.close().catch(() => undefined);
+        return err(
+          "nativeFailure",
+          `Failed to fork Kimi session: ${error instanceof Error ? error.message : String(error)}`,
         );
       }
     }

@@ -47,7 +47,7 @@ class FakeTransport implements KimiAcpTransportLike {
       commands: [{ name: "compact", description: "Compact the current session", input: { hint: "instructions" } }],
     });
     return {
-      sessionId: input.sessionId || "session-created",
+      sessionId: input.kind === "fork" ? "session-forked-123" : (input.sessionId || "session-created"),
       configOptions: this.configOptions(),
     };
   });
@@ -186,19 +186,135 @@ effort = "medium"
   });
 
   describe("open()", () => {
-    it("rejects fork with typed unsupported error", async () => {
-      const adapter = new KimiAdapter();
+    it("forks existing session and returns distinct native session", async () => {
+      const sessionId = "s-1";
+      const sessionDir = path.join(tempDir, ".kimi-code", "sessions", sessionId);
+      await mkdir(path.join(sessionDir, "agents", "main"), { recursive: true });
+      await writeFile(
+        path.join(tempDir, ".kimi-code", "session_index.jsonl"),
+        JSON.stringify({ sessionId, sessionDir, workDir: tempDir }) + "\n",
+        "utf8",
+      );
+      await writeFile(
+        path.join(sessionDir, "state.json"),
+        JSON.stringify({ id: sessionId, version: 2, cwd: tempDir }),
+        "utf8",
+      );
+
+      const adapter = new KimiAdapter(
+        { homeDirectory: tempDir },
+        {
+          resolveExecutable: () => "kimi",
+          createTransport: () => fakeTransport,
+        },
+      );
+
       const result = await adapter.open({
         kind: "fork",
-        sourceRef: { formatVersion: 1, harnessId: harnessIdSchema.parse("kimi-code"), nativeSessionId: "s-1" },
-        checkpoint: { formatVersion: 1, harnessId: harnessIdSchema.parse("kimi-code"), nativeSessionId: "s-1", checkpointId: "cp-1" },
+        sourceRef: { formatVersion: 1, harnessId: harnessIdSchema.parse("kimi-code"), nativeSessionId: sessionId },
+        checkpoint: { formatVersion: 1, harnessId: harnessIdSchema.parse("kimi-code"), nativeSessionId: sessionId, checkpointId: "turn:0" },
+        cwd: tempDir,
+      });
+
+      expect(result.ok).toBe(true);
+      if (result.ok) {
+        expect(result.value.initialState.nativeRef?.nativeSessionId).toBe("session-forked-123");
+        expect(fakeTransport.openKinds).toContain("fork");
+      }
+    });
+
+    it("rejects fork when source session does not exist", async () => {
+      const adapter = new KimiAdapter(
+        { homeDirectory: tempDir },
+        {
+          resolveExecutable: () => "kimi",
+          createTransport: () => fakeTransport,
+        },
+      );
+      const result = await adapter.open({
+        kind: "fork",
+        sourceRef: { formatVersion: 1, harnessId: harnessIdSchema.parse("kimi-code"), nativeSessionId: "non-existent" },
+        checkpoint: { formatVersion: 1, harnessId: harnessIdSchema.parse("kimi-code"), nativeSessionId: "non-existent", checkpointId: "turn:0" },
         cwd: tempDir,
       });
 
       expect(result.ok).toBe(false);
       if (!result.ok) {
+        expect(result.error.code).toBe("sessionNotFound");
+      }
+    });
+
+    it("rejects fork when checkpoint does not belong to source session", async () => {
+      const sessionId = "s-checkpoint-test";
+      const sessionDir = path.join(tempDir, ".kimi-code", "sessions", sessionId);
+      await mkdir(path.join(sessionDir, "agents", "main"), { recursive: true });
+      await writeFile(
+        path.join(tempDir, ".kimi-code", "session_index.jsonl"),
+        JSON.stringify({ sessionId, sessionDir, workDir: tempDir }) + "\n",
+        "utf8",
+      );
+      await writeFile(
+        path.join(sessionDir, "state.json"),
+        JSON.stringify({ id: sessionId, version: 2, cwd: tempDir }),
+        "utf8",
+      );
+
+      const adapter = new KimiAdapter(
+        { homeDirectory: tempDir },
+        {
+          resolveExecutable: () => "kimi",
+          createTransport: () => fakeTransport,
+        },
+      );
+      const result = await adapter.open({
+        kind: "fork",
+        sourceRef: { formatVersion: 1, harnessId: harnessIdSchema.parse("kimi-code"), nativeSessionId: sessionId },
+        checkpoint: { formatVersion: 1, harnessId: harnessIdSchema.parse("kimi-code"), nativeSessionId: "other-session", checkpointId: "turn:0" },
+        cwd: tempDir,
+      });
+
+      expect(result.ok).toBe(false);
+      if (!result.ok) {
+        expect(result.error.code).toBe("checkpointNotFound");
+      }
+    });
+
+    it("rejects fork across different working directory", async () => {
+      const sessionId = "s-cross-cwd";
+      const sessionDir = path.join(tempDir, ".kimi-code", "sessions", sessionId);
+      await mkdir(path.join(sessionDir, "agents", "main"), { recursive: true });
+      await writeFile(
+        path.join(tempDir, ".kimi-code", "session_index.jsonl"),
+        JSON.stringify({ sessionId, sessionDir, workDir: tempDir }) + "\n",
+        "utf8",
+      );
+      await writeFile(
+        path.join(sessionDir, "state.json"),
+        JSON.stringify({ id: sessionId, version: 2, cwd: tempDir }),
+        "utf8",
+      );
+
+      const adapter = new KimiAdapter(
+        { homeDirectory: tempDir },
+        {
+          resolveExecutable: () => "kimi",
+          createTransport: () => fakeTransport,
+        },
+      );
+      const otherCwd = path.join(tempDir, "other-worktree");
+      await mkdir(otherCwd, { recursive: true });
+
+      const result = await adapter.open({
+        kind: "fork",
+        sourceRef: { formatVersion: 1, harnessId: harnessIdSchema.parse("kimi-code"), nativeSessionId: sessionId },
+        checkpoint: { formatVersion: 1, harnessId: harnessIdSchema.parse("kimi-code"), nativeSessionId: sessionId, checkpointId: "turn:0" },
+        cwd: otherCwd,
+      });
+
+      expect(result.ok).toBe(false);
+      if (!result.ok) {
         expect(result.error.code).toBe("unsupported");
-        expect(result.error.message).toContain("fork");
+        expect(result.error.message).toContain("different working directories");
       }
     });
 

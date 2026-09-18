@@ -230,7 +230,7 @@ export class KimiAcpTransport {
   }
 
   async openSession(input: {
-    kind: "create" | "resume" | "load";
+    kind: "create" | "resume" | "load" | "fork";
     sessionId?: string;
     cwd?: string;
   }): Promise<{
@@ -256,6 +256,41 @@ export class KimiAcpTransport {
         sessionId: created.sessionId,
         ...(Array.isArray(createdRaw.configOptions) ? { configOptions: createdRaw.configOptions } : {}),
         ...(createdRaw.modes !== undefined ? { modes: createdRaw.modes } : {}),
+      };
+    }
+
+    if (input.kind === "fork") {
+      if (!input.sessionId) {
+        throw new KimiTransportError("unavailable", "Session ID required for fork");
+      }
+      let forked: unknown;
+      try {
+        forked = await withTimeout(
+          connection.unstable_forkSession({
+            sessionId: input.sessionId,
+            cwd: targetCwd,
+            mcpServers: [],
+          }),
+          this.#commandTimeoutMs,
+          "Kimi session/fork",
+        );
+      } catch (error) {
+        throw new KimiTransportError(
+          "unavailable",
+          `Failed to fork session ${input.sessionId}: ${error instanceof Error ? error.message : String(error)}`,
+          { cause: error },
+        );
+      }
+      const raw = (forked && typeof forked === "object" ? forked : {}) as Record<string, unknown>;
+      const forkedSessionId = typeof raw.sessionId === "string" ? raw.sessionId : "";
+      if (!forkedSessionId) {
+        throw new KimiTransportError("protocolError", "Kimi session/fork returned no sessionId");
+      }
+      this.#sessionId = forkedSessionId;
+      return {
+        sessionId: forkedSessionId,
+        ...(Array.isArray(raw.configOptions) ? { configOptions: raw.configOptions as unknown[] } : {}),
+        ...(raw.modes !== undefined ? { modes: raw.modes } : {}),
       };
     }
 

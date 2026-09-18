@@ -94,7 +94,7 @@ export const kimiSessionCapabilities: HarnessSessionCapabilities = {
     permissionModeScope: "live",
   },
   history: {
-    fork: false,
+    fork: true,
     forkAcrossCwd: false,
     rollbackLastTurn: false,
   },
