@@ -385,8 +385,7 @@ export class KimiSession implements HarnessSession {
     let currentReasoning: HostReasoningItem | null = null;
     let reasoningIndex = 0;
 
-    const appendReasoningText = (text: string) => {
-      if (!text) return;
+    const ensureReasoning = () => {
       if (!currentReasoning) {
         currentReasoning = {
           type: "reasoning",
@@ -402,13 +401,19 @@ export class KimiSession implements HarnessSession {
           },
         });
       }
-      currentReasoning.text += text;
+      return currentReasoning;
+    };
+
+    const appendReasoningText = (text: string) => {
+      ensureReasoning();
+      if (!text) return;
+      currentReasoning!.text += text;
       this.#channel.emit({
         kind: "event",
         event: {
           type: "item.updated",
           turnId,
-          itemId: currentReasoning.itemId,
+          itemId: currentReasoning!.itemId,
           update: { type: "text.append", text },
         },
       });
@@ -416,10 +421,11 @@ export class KimiSession implements HarnessSession {
 
     const completeReasoning = () => {
       if (currentReasoning) {
+        const text = currentReasoning.text.trim() || "思考中...";
         const item: HostReasoningItem = {
           type: "reasoning",
           itemId: currentReasoning.itemId,
-          text: currentReasoning.text,
+          text,
         };
         this.#channel.emit({
           kind: "event",
@@ -499,6 +505,9 @@ export class KimiSession implements HarnessSession {
             break;
           }
           case "tool.call": {
+            if (!currentReasoning && !currentAgentMessage) {
+              ensureReasoning();
+            }
             completeReasoning();
             completeAgentMessage();
             const state = accumulator.getOrCreate(event.toolCallId, turnId, event.name, event.kind);
@@ -591,6 +600,9 @@ export class KimiSession implements HarnessSession {
         }
       },
       onPermission: async (request: RequestPermissionRequest): Promise<RequestPermissionResponse> => {
+        if (!currentReasoning && !currentAgentMessage) {
+          ensureReasoning();
+        }
         completeReasoning();
         completeAgentMessage();
         const projected = projectKimiApprovalRequest(turnId, request);
@@ -609,6 +621,9 @@ export class KimiSession implements HarnessSession {
         });
       },
       onElicitation: async (request: CreateElicitationRequest): Promise<CreateElicitationResponse> => {
+        if (!currentReasoning && !currentAgentMessage) {
+          ensureReasoning();
+        }
         completeReasoning();
         completeAgentMessage();
         const projected = projectKimiElicitationRequest(turnId, request);

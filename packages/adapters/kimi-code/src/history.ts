@@ -282,12 +282,22 @@ export async function parseKimiWireLog(
 
       if (eventType === "content.part") {
         const part = event.part as Record<string, unknown> | undefined;
-        if (part && typeof part.text === "string") {
-          turn.contentParts.push({
-            text: part.text,
-            thought: part.type === "thought",
-            ...(typeof event.uuid === "string" ? { uuid: event.uuid } : {}),
-          });
+        if (part) {
+          const isThought = part.type === "thought" || part.type === "think";
+          const text = typeof part.text === "string"
+            ? part.text
+            : typeof part.think === "string"
+              ? part.think
+              : typeof part.thought === "string"
+                ? part.thought
+                : "";
+          if (text || isThought) {
+            turn.contentParts.push({
+              text: text || "思考中...",
+              thought: isThought,
+              ...(typeof event.uuid === "string" ? { uuid: event.uuid } : {}),
+            });
+          }
         }
       } else if (eventType === "tool.call") {
         const toolCallId = typeof event.toolCallId === "string" ? event.toolCallId : (event.uuid as string) || "unknown";

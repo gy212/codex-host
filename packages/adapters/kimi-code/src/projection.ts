@@ -114,7 +114,17 @@ export function projectKimiElicitationRequest(
     const isArray = prop.type === "array";
     schemaProperties[key] = { type: isArray ? "array" : "string" };
 
-    const prompt = typeof prop.title === "string" ? prop.title : key;
+    const promptCandidate = (typeof prop.description === "string" && prop.description.trim())
+      ? prop.description.trim()
+      : (typeof req.message === "string" && req.message.trim())
+        ? req.message.trim()
+        : (typeof prop.title === "string" && prop.title.trim())
+          ? prop.title.trim()
+          : key;
+    const prompt = (promptCandidate.toLowerCase() === "question" && typeof req.message === "string" && req.message.trim())
+      ? req.message.trim()
+      : promptCandidate;
+
     const options: Array<{ value: string; label: string; description?: string }> = [];
 
     if (isArray && typeof prop.items === "object" && prop.items !== null) {
@@ -150,11 +160,16 @@ export function projectKimiElicitationRequest(
     });
   }
 
+  const rawTitle = typeof requestedSchema?.title === "string" ? requestedSchema.title.trim() : "";
+  const title = (rawTitle && rawTitle.toLowerCase() !== "ask user question" && rawTitle.toLowerCase() !== "ask question")
+    ? rawTitle
+    : "提问";
+
   const interaction: HostQuestionInteraction = {
     type: "question",
     interactionId,
     turnId,
-    ...(typeof requestedSchema?.title === "string" ? { title: requestedSchema.title } : {}),
+    title,
     questions,
   };
 

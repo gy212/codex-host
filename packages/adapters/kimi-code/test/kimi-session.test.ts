@@ -750,6 +750,94 @@ describe("KimiSession", () => {
       });
     });
 
+    it("emits reasoning envelope before elicitation and finishes turn cleanly with final answer", async () => {
+      const transport = new MockKimiTransport();
+
+      transport.promptMock = vi.fn(async (_text: string, handler: ActivePromptHandler) => {
+        // Direct elicitation without explicit thought chunk
+        const elicitationPromise = handler.onElicitation({
+          message: "Select an option",
+          requestedSchema: {
+            title: "Ask user question",
+            properties: {
+              question: {
+                title: "question",
+                type: "string",
+                oneOf: [{ const: "opt1", title: "Option 1" }],
+              },
+            },
+          },
+        });
+
+        await elicitationPromise;
+        handler.onEvent({ type: "agent.text", text: "Answer complete." });
+        return { stopReason: "end_turn" };
+      });
+
+      const session = new KimiSession({
+        transport,
+        sessionId: "session-elic-fold",
+        cwd: "D:/project",
+        initialState: {},
+      });
+
+      const turnId = hostTurnIdSchema.parse("turn-elic-fold-1");
+      await session.execute({
+        type: "turn.start",
+        turnId,
+        input: [{ type: "text", text: "Test question tool" }],
+      });
+
+      const outputs: HarnessOutput[] = [];
+      for await (const out of session.outputs) {
+        outputs.push(out);
+        if (out.kind === "interaction" && out.interaction.type === "question") {
+          expect(out.interaction.title).toBe("提问");
+          expect(out.interaction.questions[0]?.prompt).toBe("Select an option");
+          // Respond to question
+          void session.execute({
+            type: "interaction.respond",
+            interactionId: out.interaction.interactionId,
+            response: {
+              type: "question",
+              answers: { question: ["opt1"] },
+            },
+          });
+        }
+        if (out.kind === "event" && out.event.type === "turn.completed") break;
+      }
+
+      // Verify reasoning item was emitted BEFORE interaction
+      const reasoningCompleted = outputs.find(
+        (o) => o.kind === "event" && o.event.type === "item.completed" && o.event.snapshot.item.type === "reasoning",
+      );
+      expect(reasoningCompleted).toBeDefined();
+      if (reasoningCompleted && reasoningCompleted.kind === "event" && reasoningCompleted.event.type === "item.completed" && reasoningCompleted.event.snapshot.item.type === "reasoning") {
+        expect(reasoningCompleted.event.snapshot.item.text).toBe("思考中...");
+      }
+
+      // Verify final agent message has no commentary phase
+      const agentCompleted = outputs.find(
+        (o) => o.kind === "event" && o.event.type === "item.completed" && o.event.snapshot.item.type === "agentMessage",
+      );
+      expect(agentCompleted).toBeDefined();
+      if (agentCompleted && agentCompleted.kind === "event" && agentCompleted.event.type === "item.completed" && agentCompleted.event.snapshot.item.type === "agentMessage") {
+        expect(agentCompleted.event.snapshot.item.text).toBe("Answer complete.");
+        expect(agentCompleted.event.snapshot.item.phase).toBeUndefined();
+      }
+
+      // Verify order: start:reasoning -> complete:reasoning -> interaction -> agentMessage -> turn.completed
+      const eventKinds = outputs.map((o) => {
+        if (o.kind === "interaction") return "interaction";
+        if (o.event.type === "item.started") return `start:${o.event.item.type}`;
+        if (o.event.type === "item.completed") return `complete:${o.event.snapshot.item.type}`;
+        return o.event.type;
+      });
+
+      expect(eventKinds.indexOf("start:reasoning")).toBeLessThan(eventKinds.indexOf("interaction"));
+      expect(eventKinds.indexOf("interaction")).toBeLessThan(eventKinds.indexOf("start:agentMessage"));
+    });
+
     it("rejects interaction response with mismatched type or action", async () => {
       const transport = new MockKimiTransport();
       transport.promptMock = vi.fn(async (_text: string, handler: ActivePromptHandler) => {

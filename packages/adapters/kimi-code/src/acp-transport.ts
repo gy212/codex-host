@@ -100,10 +100,15 @@ export function projectKimiTextUpdate(
   update: Record<string, unknown>,
 ): Extract<KimiTransportEvent, { type: "agent.text" | "agent.thought" }> | null {
   const content = update.content;
-  const text = content && typeof content === "object" && (content as Record<string, unknown>).type === "text"
-    && typeof (content as Record<string, unknown>).text === "string"
-    ? (content as Record<string, unknown>).text as string
-    : "";
+  let text = "";
+  if (content && typeof content === "object") {
+    const c = content as Record<string, unknown>;
+    if (typeof c.text === "string") text = c.text;
+    else if (typeof c.thought === "string") text = c.thought;
+    else if (typeof c.think === "string") text = c.think;
+  } else if (typeof update.text === "string") {
+    text = update.text;
+  }
 
   if (update.sessionUpdate === "agent_message_chunk") return { type: "agent.text", text };
   if (update.sessionUpdate === "agent_thought_chunk") return { type: "agent.thought", text };
