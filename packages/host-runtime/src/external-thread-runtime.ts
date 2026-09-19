@@ -191,7 +191,10 @@ export class ExternalThreadRuntime {
   readonly idleRelease: ExternalThreadIdleRelease;
   readonly #adapters: Map<ExternalHarnessId, HarnessAdapter>;
   readonly #consumeOutputs: (thread: ExternalThread) => Promise<void>;
-  readonly #diagnose: (error: unknown) => void;
+  readonly #diagnose: (
+    error: unknown,
+    fields?: Readonly<Record<string, string | number | boolean | null | undefined>>,
+  ) => void;
   readonly #environment: NodeJS.ProcessEnv;
   readonly #repository: ExternalThreadRepository;
   readonly #restores = new Map<string, Promise<ExternalThread>>();
@@ -203,7 +206,10 @@ export class ExternalThreadRuntime {
     environment?: NodeJS.ProcessEnv;
     repository: ExternalThreadRepository;
     consumeOutputs(thread: ExternalThread): Promise<void>;
-    diagnose(error: unknown): void;
+    diagnose(
+      error: unknown,
+      fields?: Readonly<Record<string, string | number | boolean | null | undefined>>,
+    ): void;
     subagentRunning?(threadId: string): boolean;
     idleRelease?: {
       queue: DesktopRequestQueue;
@@ -482,7 +488,16 @@ export class ExternalThreadRuntime {
       const failure = error instanceof Error ? error : new Error(errorMessage(error));
       thread.persistenceError = failure;
       thread.stateObserver.fault(failure);
-      this.#diagnose("External Turn identity could not be persisted");
+      this.#diagnose("External Turn identity could not be persisted", {
+        event: "external.turn.identity.persist_failed",
+        harnessId: thread.harnessId,
+        hostThreadId: thread.id,
+        hostTurnId: event.turnId,
+        nativeSessionId: event.nativeTurnRef.nativeSessionId,
+        nativeTurnKey: event.nativeTurnRef.nativeTurnKey,
+        recordState: thread.record.state,
+        cause: failure.message,
+      });
       return failure;
     }
   }

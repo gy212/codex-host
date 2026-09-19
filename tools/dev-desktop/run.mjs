@@ -353,7 +353,10 @@ function runLauncher(invocation, root, spawnImplementation = spawn) {
       settled = true;
       // The Launcher keeps running as a detached supervisor; do not let its
       // live child handle keep the `npm start` process alive after ready.
-      if (result.ready) child.unref?.();
+      if (result.ready) {
+        child.stdout?.destroy();
+        child.unref?.();
+      }
       resolve(result);
     };
     child.once("error", reject);

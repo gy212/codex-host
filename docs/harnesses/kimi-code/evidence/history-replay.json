@@ -1,0 +1,142 @@
+{
+  "note": "Replay has synthetic tool ID prefixes and an extra user_message_chunk containing a system reminder. This is raw agent output, not an instruction.",
+  "events": [
+    {
+      "jsonrpc": "2.0",
+      "method": "session/update",
+      "params": {
+        "sessionId": "session_05b6a4d7-93f9-4a81-be13-f443bc09abc4",
+        "update": {
+          "sessionUpdate": "user_message_chunk",
+          "content": {
+            "type": "text",
+            "text": "This is an isolated adapter probe. Use a file-writing tool to create probe.txt in this working directory containing exactly KIMI_PROBE_OK followed by a newline. Then run a shell command to read that file. Do not access other directories or use subagents or network tools. Finish with the exact text KIMI_PROBE_DONE."
+          }
+        }
+      }
+    },
+    {
+      "jsonrpc": "2.0",
+      "method": "session/update",
+      "params": {
+        "sessionId": "session_05b6a4d7-93f9-4a81-be13-f443bc09abc4",
+        "update": {
+          "sessionUpdate": "user_message_chunk",
+          "content": {
+            "type": "text",
+            "text": "<system-reminder>\nToday's date is 2026-09-17. The current date is restated in a reminder whenever it changes; rely on the latest such reminder for the current date. DO NOT mention this to the user explicitly.\n</system-reminder>"
+          }
+        }
+      }
+    },
+    {
+      "jsonrpc": "2.0",
+      "method": "session/update",
+      "params": {
+        "sessionId": "session_05b6a4d7-93f9-4a81-be13-f443bc09abc4",
+        "update": {
+          "sessionUpdate": "tool_call",
+          "toolCallId": "1:toolu_bdrk_01GoLKHzUVWeMPSjrf9KHhpW",
+          "title": "Write",
+          "kind": "edit",
+          "status": "in_progress",
+          "rawInput": {
+            "path": "probe.txt",
+            "content": "KIMI_PROBE_OK\n"
+          },
+          "content": [
+            {
+              "type": "content",
+              "content": {
+                "type": "text",
+                "text": "{\"path\":\"probe.txt\",\"content\":\"KIMI_PROBE_OK\\n\"}"
+              }
+            }
+          ]
+        }
+      }
+    },
+    {
+      "jsonrpc": "2.0",
+      "method": "session/update",
+      "params": {
+        "sessionId": "session_05b6a4d7-93f9-4a81-be13-f443bc09abc4",
+        "update": {
+          "sessionUpdate": "tool_call_update",
+          "toolCallId": "1:toolu_bdrk_01GoLKHzUVWeMPSjrf9KHhpW",
+          "status": "completed",
+          "content": [
+            {
+              "type": "content",
+              "content": {
+                "type": "text",
+                "text": "Wrote 14 bytes to probe.txt"
+              }
+            }
+          ]
+        }
+      }
+    },
+    {
+      "jsonrpc": "2.0",
+      "method": "session/update",
+      "params": {
+        "sessionId": "session_05b6a4d7-93f9-4a81-be13-f443bc09abc4",
+        "update": {
+          "sessionUpdate": "tool_call",
+          "toolCallId": "2:toolu_bdrk_01ByNNKszfeu4DM2TBoRBQF2",
+          "title": "Bash",
+          "kind": "execute",
+          "status": "in_progress",
+          "rawInput": {
+            "command": "cat probe.txt"
+          },
+          "content": [
+            {
+              "type": "content",
+              "content": {
+                "type": "text",
+                "text": "{\"command\":\"cat probe.txt\"}"
+              }
+            }
+          ]
+        }
+      }
+    },
+    {
+      "jsonrpc": "2.0",
+      "method": "session/update",
+      "params": {
+        "sessionId": "session_05b6a4d7-93f9-4a81-be13-f443bc09abc4",
+        "update": {
+          "sessionUpdate": "tool_call_update",
+          "toolCallId": "2:toolu_bdrk_01ByNNKszfeu4DM2TBoRBQF2",
+          "status": "completed",
+          "content": [
+            {
+              "type": "content",
+              "content": {
+                "type": "text",
+                "text": "KIMI_PROBE_OK\n"
+              }
+            }
+          ]
+        }
+      }
+    },
+    {
+      "jsonrpc": "2.0",
+      "method": "session/update",
+      "params": {
+        "sessionId": "session_05b6a4d7-93f9-4a81-be13-f443bc09abc4",
+        "update": {
+          "sessionUpdate": "agent_message_chunk",
+          "content": {
+            "type": "text",
+            "text": "KIMI_PROBE_DONE"
+          }
+        }
+      }
+    }
+  ]
+}

@@ -1,0 +1,687 @@
+{
+  "checkedAt": "2026-09-17",
+  "repositoryBase": "2dca131047a83b54ec71beb8039ecf5dd84f20b2",
+  "kimiCodeSource": "86e08208e3445171f6500c948234d7e3a0684324",
+  "kimiSdkSource": "ed4be6be5280d02191da88bbafb3f828dcd33d72",
+  "sdkVersion": "0.1.8",
+  "sdkCompatibility": {
+    "mode": "sdk",
+    "executable": "C:/Users/21240/.kimi-code/bin/kimi.exe",
+    "cwd": "D:\\DevTools\\probes\\kimi-sdk-20260917\\sdk\\workspace",
+    "startedAt": "2026-09-17T12:44:13.062Z",
+    "ok": false,
+    "error": {
+      "name": "TransportError",
+      "message": "CLI exited with code 1: error: unknown option '--work-dir'",
+      "code": "PROCESS_CRASHED"
+    }
+  },
+  "initialize": {
+    "protocolVersion": 1,
+    "agentCapabilities": {
+      "loadSession": true,
+      "promptCapabilities": {
+        "image": true,
+        "audio": false,
+        "embeddedContext": true
+      },
+      "sessionCapabilities": {
+        "list": {},
+        "resume": {},
+        "close": {},
+        "delete": {},
+        "fork": {},
+        "additionalDirectories": {}
+      },
+      "mcpCapabilities": {
+        "http": true,
+        "sse": true
+      },
+      "auth": {
+        "logout": {}
+      }
+    },
+    "authMethods": [
+      {
+        "id": "login",
+        "type": "terminal",
+        "name": "Login with Kimi account",
+        "description": "Open the device-code login flow in a terminal.",
+        "args": [
+          "--login"
+        ],
+        "env": {},
+        "_meta": {
+          "terminal-auth": {
+            "type": "terminal",
+            "label": "Login with Kimi account",
+            "command": "C:/Users/21240/.kimi-code/bin/kimi.exe",
+            "args": [
+              "login"
+            ],
+            "env": {}
+          }
+        }
+      }
+    ],
+    "agentInfo": {
+      "name": "Kimi Code CLI",
+      "version": "2.0.0"
+    }
+  },
+  "sessionConfiguration": {
+    "sessionId": "session_4ddc7bbb-2a18-44dd-b23f-d6e423c7eb8a",
+    "configOptions": [
+      {
+        "type": "select",
+        "id": "model",
+        "name": "Model",
+        "category": "model",
+        "currentValue": "relay",
+        "options": [
+          {
+            "value": "relay",
+            "name": "claude-sonnet-5"
+          }
+        ]
+      },
+      {
+        "type": "select",
+        "id": "thinking",
+        "name": "Thinking",
+        "category": "thought_level",
+        "currentValue": "medium",
+        "options": [
+          {
+            "value": "off",
+            "name": "Thinking Off"
+          },
+          {
+            "value": "low",
+            "name": "Thinking Low"
+          },
+          {
+            "value": "medium",
+            "name": "Thinking Medium"
+          },
+          {
+            "value": "high",
+            "name": "Thinking High"
+          },
+          {
+            "value": "xhigh",
+            "name": "Thinking Xhigh"
+          },
+          {
+            "value": "max",
+            "name": "Thinking Max"
+          }
+        ]
+      },
+      {
+        "type": "select",
+        "id": "mode",
+        "name": "Mode",
+        "category": "mode",
+        "currentValue": "default",
+        "options": [
+          {
+            "value": "default",
+            "name": "Default",
+            "description": "Manual approvals; tools execute normally."
+          },
+          {
+            "value": "plan",
+            "name": "Plan",
+            "description": "Read-only planning; no tool execution."
+          },
+          {
+            "value": "auto",
+            "name": "Auto",
+            "description": "Auto-approve safe operations."
+          },
+          {
+            "value": "yolo",
+            "name": "YOLO",
+            "description": "Auto-approve everything."
+          }
+        ]
+      }
+    ],
+    "modes": {
+      "currentModeId": "default",
+      "availableModes": [
+        {
+          "id": "default",
+          "name": "Default",
+          "description": "Manual approvals; tools execute normally."
+        },
+        {
+          "id": "plan",
+          "name": "Plan",
+          "description": "Read-only planning; no tool execution."
+        },
+        {
+          "id": "auto",
+          "name": "Auto",
+          "description": "Auto-approve safe operations."
+        },
+        {
+          "id": "yolo",
+          "name": "YOLO",
+          "description": "Auto-approve everything."
+        }
+      ]
+    }
+  },
+  "commands": [
+    "compact",
+    "status",
+    "usage",
+    "mcp",
+    "tasks",
+    "help",
+    "check-kimi-code-docs",
+    "import-from-cc-codex",
+    "mcp-config",
+    "sub-skill",
+    "sub-skill.consolidate",
+    "sub-skill.review",
+    "update-config",
+    "write-goal",
+    "skill:codexhost-delegation",
+    "skill:playwright-cli"
+  ],
+  "live": {
+    "ok": true,
+    "firstTurn": {
+      "stopReason": "end_turn"
+    },
+    "fileContents": "KIMI_PROBE_OK\n",
+    "continued": {
+      "stopReason": "end_turn"
+    }
+  },
+  "features": {
+    "ok": true,
+    "settings": [
+      {
+        "configId": "thinking",
+        "value": "off",
+        "result": {
+          "configOptions": [
+            {
+              "type": "select",
+              "id": "model",
+              "name": "Model",
+              "category": "model",
+              "currentValue": "relay",
+              "options": [
+                {
+                  "value": "relay",
+                  "name": "claude-sonnet-5"
+                }
+              ]
+            },
+            {
+              "type": "select",
+              "id": "thinking",
+              "name": "Thinking",
+              "category": "thought_level",
+              "currentValue": "off",
+              "options": [
+                {
+                  "value": "off",
+                  "name": "Thinking Off"
+                },
+                {
+                  "value": "low",
+                  "name": "Thinking Low"
+                },
+                {
+                  "value": "medium",
+                  "name": "Thinking Medium"
+                },
+                {
+                  "value": "high",
+                  "name": "Thinking High"
+                },
+                {
+                  "value": "xhigh",
+                  "name": "Thinking Xhigh"
+                },
+                {
+                  "value": "max",
+                  "name": "Thinking Max"
+                }
+              ]
+            },
+            {
+              "type": "select",
+              "id": "mode",
+              "name": "Mode",
+              "category": "mode",
+              "currentValue": "default",
+              "options": [
+                {
+                  "value": "default",
+                  "name": "Default",
+                  "description": "Manual approvals; tools execute normally."
+                },
+                {
+                  "value": "plan",
+                  "name": "Plan",
+                  "description": "Read-only planning; no tool execution."
+                },
+                {
+                  "value": "auto",
+                  "name": "Auto",
+                  "description": "Auto-approve safe operations."
+                },
+                {
+                  "value": "yolo",
+                  "name": "YOLO",
+                  "description": "Auto-approve everything."
+                }
+              ]
+            }
+          ]
+        }
+      },
+      {
+        "configId": "model",
+        "value": "relay",
+        "result": {
+          "configOptions": [
+            {
+              "type": "select",
+              "id": "model",
+              "name": "Model",
+              "category": "model",
+              "currentValue": "relay",
+              "options": [
+                {
+                  "value": "relay",
+                  "name": "claude-sonnet-5"
+                }
+              ]
+            },
+            {
+              "type": "select",
+              "id": "thinking",
+              "name": "Thinking",
+              "category": "thought_level",
+              "currentValue": "off",
+              "options": [
+                {
+                  "value": "off",
+                  "name": "Thinking Off"
+                },
+                {
+                  "value": "low",
+                  "name": "Thinking Low"
+                },
+                {
+                  "value": "medium",
+                  "name": "Thinking Medium"
+                },
+                {
+                  "value": "high",
+                  "name": "Thinking High"
+                },
+                {
+                  "value": "xhigh",
+                  "name": "Thinking Xhigh"
+                },
+                {
+                  "value": "max",
+                  "name": "Thinking Max"
+                }
+              ]
+            },
+            {
+              "type": "select",
+              "id": "mode",
+              "name": "Mode",
+              "category": "mode",
+              "currentValue": "default",
+              "options": [
+                {
+                  "value": "default",
+                  "name": "Default",
+                  "description": "Manual approvals; tools execute normally."
+                },
+                {
+                  "value": "plan",
+                  "name": "Plan",
+                  "description": "Read-only planning; no tool execution."
+                },
+                {
+                  "value": "auto",
+                  "name": "Auto",
+                  "description": "Auto-approve safe operations."
+                },
+                {
+                  "value": "yolo",
+                  "name": "YOLO",
+                  "description": "Auto-approve everything."
+                }
+              ]
+            }
+          ]
+        }
+      },
+      {
+        "configId": "mode",
+        "value": "yolo",
+        "result": {
+          "configOptions": [
+            {
+              "type": "select",
+              "id": "model",
+              "name": "Model",
+              "category": "model",
+              "currentValue": "relay",
+              "options": [
+                {
+                  "value": "relay",
+                  "name": "claude-sonnet-5"
+                }
+              ]
+            },
+            {
+              "type": "select",
+              "id": "thinking",
+              "name": "Thinking",
+              "category": "thought_level",
+              "currentValue": "off",
+              "options": [
+                {
+                  "value": "off",
+                  "name": "Thinking Off"
+                },
+                {
+                  "value": "low",
+                  "name": "Thinking Low"
+                },
+                {
+                  "value": "medium",
+                  "name": "Thinking Medium"
+                },
+                {
+                  "value": "high",
+                  "name": "Thinking High"
+                },
+                {
+                  "value": "xhigh",
+                  "name": "Thinking Xhigh"
+                },
+                {
+                  "value": "max",
+                  "name": "Thinking Max"
+                }
+              ]
+            },
+            {
+              "type": "select",
+              "id": "mode",
+              "name": "Mode",
+              "category": "mode",
+              "currentValue": "yolo",
+              "options": [
+                {
+                  "value": "default",
+                  "name": "Default",
+                  "description": "Manual approvals; tools execute normally."
+                },
+                {
+                  "value": "plan",
+                  "name": "Plan",
+                  "description": "Read-only planning; no tool execution."
+                },
+                {
+                  "value": "auto",
+                  "name": "Auto",
+                  "description": "Auto-approve safe operations."
+                },
+                {
+                  "value": "yolo",
+                  "name": "YOLO",
+                  "description": "Auto-approve everything."
+                }
+              ]
+            }
+          ]
+        }
+      },
+      {
+        "configId": "mode",
+        "value": "default",
+        "result": {
+          "configOptions": [
+            {
+              "type": "select",
+              "id": "model",
+              "name": "Model",
+              "category": "model",
+              "currentValue": "relay",
+              "options": [
+                {
+                  "value": "relay",
+                  "name": "claude-sonnet-5"
+                }
+              ]
+            },
+            {
+              "type": "select",
+              "id": "thinking",
+              "name": "Thinking",
+              "category": "thought_level",
+              "currentValue": "off",
+              "options": [
+                {
+                  "value": "off",
+                  "name": "Thinking Off"
+                },
+                {
+                  "value": "low",
+                  "name": "Thinking Low"
+                },
+                {
+                  "value": "medium",
+                  "name": "Thinking Medium"
+                },
+                {
+                  "value": "high",
+                  "name": "Thinking High"
+                },
+                {
+                  "value": "xhigh",
+                  "name": "Thinking Xhigh"
+                },
+                {
+                  "value": "max",
+                  "name": "Thinking Max"
+                }
+              ]
+            },
+            {
+              "type": "select",
+              "id": "mode",
+              "name": "Mode",
+              "category": "mode",
+              "currentValue": "default",
+              "options": [
+                {
+                  "value": "default",
+                  "name": "Default",
+                  "description": "Manual approvals; tools execute normally."
+                },
+                {
+                  "value": "plan",
+                  "name": "Plan",
+                  "description": "Read-only planning; no tool execution."
+                },
+                {
+                  "value": "auto",
+                  "name": "Auto",
+                  "description": "Auto-approve safe operations."
+                },
+                {
+                  "value": "yolo",
+                  "name": "YOLO",
+                  "description": "Auto-approve everything."
+                }
+              ]
+            }
+          ]
+        }
+      }
+    ],
+    "invalidSetting": {
+      "code": -32602,
+      "message": "Invalid params: Unknown thinking value: not-a-real-effort"
+    },
+    "cancelled": {
+      "stopReason": "cancelled"
+    },
+    "questionTurn": {
+      "stopReason": "end_turn"
+    },
+    "forked": {
+      "sessionId": "session_2723aae3-a108-4338-9763-b51b3c7d6206",
+      "configOptions": [
+        {
+          "type": "select",
+          "id": "model",
+          "name": "Model",
+          "category": "model",
+          "currentValue": "relay",
+          "options": [
+            {
+              "value": "relay",
+              "name": "claude-sonnet-5"
+            }
+          ]
+        },
+        {
+          "type": "select",
+          "id": "thinking",
+          "name": "Thinking",
+          "category": "thought_level",
+          "currentValue": "medium",
+          "options": [
+            {
+              "value": "off",
+              "name": "Thinking Off"
+            },
+            {
+              "value": "low",
+              "name": "Thinking Low"
+            },
+            {
+              "value": "medium",
+              "name": "Thinking Medium"
+            },
+            {
+              "value": "high",
+              "name": "Thinking High"
+            },
+            {
+              "value": "xhigh",
+              "name": "Thinking Xhigh"
+            },
+            {
+              "value": "max",
+              "name": "Thinking Max"
+            }
+          ]
+        },
+        {
+          "type": "select",
+          "id": "mode",
+          "name": "Mode",
+          "category": "mode",
+          "currentValue": "default",
+          "options": [
+            {
+              "value": "default",
+              "name": "Default",
+              "description": "Manual approvals; tools execute normally."
+            },
+            {
+              "value": "plan",
+              "name": "Plan",
+              "description": "Read-only planning; no tool execution."
+            },
+            {
+              "value": "auto",
+              "name": "Auto",
+              "description": "Auto-approve safe operations."
+            },
+            {
+              "value": "yolo",
+              "name": "YOLO",
+              "description": "Auto-approve everything."
+            }
+          ]
+        }
+      ],
+      "modes": {
+        "currentModeId": "default",
+        "availableModes": [
+          {
+            "id": "default",
+            "name": "Default",
+            "description": "Manual approvals; tools execute normally."
+          },
+          {
+            "id": "plan",
+            "name": "Plan",
+            "description": "Read-only planning; no tool execution."
+          },
+          {
+            "id": "auto",
+            "name": "Auto",
+            "description": "Auto-approve safe operations."
+          },
+          {
+            "id": "yolo",
+            "name": "YOLO",
+            "description": "Auto-approve everything."
+          }
+        ]
+      }
+    },
+    "sessionList": {
+      "sessions": [
+        {
+          "sessionId": "session_b6d26031-1e69-472c-b466-eb49d518df0b",
+          "cwd": "D:\\DevTools\\probes\\kimi-sdk-20260917\\acp\\workspace",
+          "title": "Without using tools, write 2000 numbered lines, each containing a different short sentence about the sea.",
+          "updatedAt": "2026-09-17T12:49:16.094Z"
+        },
+        {
+          "sessionId": "session_2723aae3-a108-4338-9763-b51b3c7d6206",
+          "cwd": "D:\\DevTools\\probes\\kimi-sdk-20260917\\acp\\workspace",
+          "title": "Fork: This is an isolated adapter probe. Use a file-writing tool to create probe.txt in this working directory containing exactly KIMI_PROBE_OK followed by a newline. Then run a shell command to read that f",
+          "updatedAt": "2026-09-17T12:45:33.293Z"
+        },
+        {
+          "sessionId": "session_05b6a4d7-93f9-4a81-be13-f443bc09abc4",
+          "cwd": "D:\\DevTools\\probes\\kimi-sdk-20260917\\acp\\workspace",
+          "title": "This is an isolated adapter probe. Use a file-writing tool to create probe.txt in this working directory containing exactly KIMI_PROBE_OK followed by a newline. Then run a shell command to read that f",
+          "updatedAt": "2026-09-17T12:45:33.293Z"
+        },
+        {
+          "sessionId": "session_4ddc7bbb-2a18-44dd-b23f-d6e423c7eb8a",
+          "cwd": "D:\\DevTools\\probes\\kimi-sdk-20260917\\acp\\workspace",
+          "title": null,
+          "updatedAt": "2026-09-17T12:44:13.942Z"
+        }
+      ],
+      "nextCursor": null
+    },
+    "closed": {}
+  }
+}

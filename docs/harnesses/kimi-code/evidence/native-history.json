@@ -1,0 +1,668 @@
+{
+  "mode": "history",
+  "executable": "C:/Users/21240/.kimi-code/bin/kimi.exe",
+  "cwd": "D:\\DevTools\\probes\\kimi-sdk-20260917\\acp\\workspace",
+  "startedAt": "2026-09-17T12:56:59.609Z",
+  "sessions": [
+    {
+      "sessionId": "session_05b6a4d7-93f9-4a81-be13-f443bc09abc4",
+      "stateVersion": 2,
+      "cwd": "D:\\DevTools\\probes\\kimi-sdk-20260917\\acp\\workspace",
+      "records": [
+        {
+          "type": "metadata",
+          "protocol_version": "1.5",
+          "created_at": 1789649107550
+        },
+        {
+          "type": "turn.prompt",
+          "agentId": "main",
+          "input": [
+            {
+              "type": "text",
+              "text": "This is an isolated adapter probe. Use a file-writing tool to create probe.txt in this working directory containing exactly KIMI_PROBE_OK followed by a newline. Then run a shell command to read that file. Do not access other directories or use subagents or network tools. Finish with the exact text KIMI_PROBE_DONE."
+            }
+          ],
+          "origin": {
+            "kind": "user"
+          },
+          "promptId": "msg_01M2QPCEPWD4J5XTGER1GTMKEM",
+          "turnId": 0,
+          "time": 1789649107688
+        },
+        {
+          "type": "context.append_loop_event",
+          "agentId": "main",
+          "event": {
+            "type": "step.begin",
+            "uuid": "ce2643fe-10d8-4b71-b7d3-26a08b435265",
+            "turnId": "0",
+            "step": 1
+          },
+          "time": 1789649107703
+        },
+        {
+          "type": "usage.record",
+          "agentId": "main",
+          "model": "relay",
+          "usage": {
+            "inputOther": 237,
+            "output": 14,
+            "inputCacheRead": 0,
+            "inputCacheCreation": 35278
+          },
+          "usageScope": "turn",
+          "time": 1789649115757
+        },
+        {
+          "type": "file_history.tracked",
+          "agentId": "main",
+          "turnId": 0,
+          "path": "probe.txt",
+          "entry": {
+            "key": null,
+            "version": 1
+          },
+          "time": 1789649115799
+        },
+        {
+          "type": "context.append_loop_event",
+          "agentId": "main",
+          "event": {
+            "type": "tool.call",
+            "uuid": "c3cee6a8-a9e4-418f-9d4d-7313450a5439",
+            "turnId": "0",
+            "step": 1,
+            "stepUuid": "ce2643fe-10d8-4b71-b7d3-26a08b435265",
+            "toolCallId": "toolu_bdrk_01GoLKHzUVWeMPSjrf9KHhpW",
+            "name": "Write",
+            "args": {
+              "path": "probe.txt",
+              "content": "KIMI_PROBE_OK\n"
+            },
+            "display": {
+              "kind": "file_io",
+              "operation": "write",
+              "path": "D:/DevTools/probes/kimi-sdk-20260917/acp/workspace/probe.txt",
+              "content": "KIMI_PROBE_OK\n"
+            }
+          },
+          "time": 1789649115800
+        },
+        {
+          "type": "context.append_loop_event",
+          "agentId": "main",
+          "event": {
+            "type": "tool.result",
+            "parentUuid": "c3cee6a8-a9e4-418f-9d4d-7313450a5439",
+            "toolCallId": "toolu_bdrk_01GoLKHzUVWeMPSjrf9KHhpW",
+            "result": {
+              "output": "Wrote 14 bytes to probe.txt"
+            }
+          },
+          "time": 1789649115818
+        },
+        {
+          "type": "context.append_loop_event",
+          "agentId": "main",
+          "event": {
+            "type": "step.end",
+            "uuid": "ce2643fe-10d8-4b71-b7d3-26a08b435265",
+            "turnId": "0",
+            "step": 1,
+            "finishReason": "tool_use",
+            "usage": {
+              "inputOther": 237,
+              "output": 14,
+              "inputCacheRead": 0,
+              "inputCacheCreation": 35278
+            },
+            "llmFirstTokenLatencyMs": 6599,
+            "llmStreamDurationMs": 1445,
+            "llmRequestBuildMs": 2,
+            "llmServerFirstTokenMs": 6597,
+            "llmServerDecodeMs": 1445,
+            "llmClientConsumeMs": 0,
+            "llmClientBlockedMs": 70,
+            "messageId": "msg_a582b9162d98473cb8ffd58dc823ea87",
+            "providerFinishReason": "tool_calls",
+            "rawFinishReason": "tool_use"
+          },
+          "time": 1789649115820
+        },
+        {
+          "type": "context.append_loop_event",
+          "agentId": "main",
+          "event": {
+            "type": "step.begin",
+            "uuid": "7eed1ae3-cc3c-454e-8550-9372adffb62f",
+            "turnId": "0",
+            "step": 2
+          },
+          "time": 1789649115826
+        },
+        {
+          "type": "usage.record",
+          "agentId": "main",
+          "model": "relay",
+          "usage": {
+            "inputOther": 13,
+            "output": 9,
+            "inputCacheRead": 40062,
+            "inputCacheCreation": 2132
+          },
+          "usageScope": "turn",
+          "time": 1789649120243
+        },
+        {
+          "type": "context.append_loop_event",
+          "agentId": "main",
+          "event": {
+            "type": "tool.call",
+            "uuid": "46a7a2c0-9165-46bf-b7da-3dd901e76c33",
+            "turnId": "0",
+            "step": 2,
+            "stepUuid": "7eed1ae3-cc3c-454e-8550-9372adffb62f",
+            "toolCallId": "toolu_bdrk_01ByNNKszfeu4DM2TBoRBQF2",
+            "name": "Bash",
+            "args": {
+              "command": "cat probe.txt"
+            },
+            "display": {
+              "kind": "command",
+              "command": "cat probe.txt",
+              "cwd": "D:\\DevTools\\probes\\kimi-sdk-20260917\\acp\\workspace",
+              "language": "bash"
+            }
+          },
+          "time": 1789649120260
+        },
+        {
+          "type": "context.append_loop_event",
+          "agentId": "main",
+          "event": {
+            "type": "tool.result",
+            "parentUuid": "46a7a2c0-9165-46bf-b7da-3dd901e76c33",
+            "toolCallId": "toolu_bdrk_01ByNNKszfeu4DM2TBoRBQF2",
+            "result": {
+              "output": "KIMI_PROBE_OK\n"
+            }
+          },
+          "time": 1789649121186
+        },
+        {
+          "type": "context.append_loop_event",
+          "agentId": "main",
+          "event": {
+            "type": "step.end",
+            "uuid": "7eed1ae3-cc3c-454e-8550-9372adffb62f",
+            "turnId": "0",
+            "step": 2,
+            "finishReason": "tool_use",
+            "usage": {
+              "inputOther": 13,
+              "output": 9,
+              "inputCacheRead": 40062,
+              "inputCacheCreation": 2132
+            },
+            "llmFirstTokenLatencyMs": 3396,
+            "llmStreamDurationMs": 1014,
+            "llmRequestBuildMs": 0,
+            "llmServerFirstTokenMs": 3396,
+            "llmServerDecodeMs": 1014,
+            "llmClientConsumeMs": 0,
+            "llmClientBlockedMs": 20,
+            "messageId": "msg_44003f2b8f494127867ec88e91268ea8",
+            "providerFinishReason": "tool_calls",
+            "rawFinishReason": "tool_use"
+          },
+          "time": 1789649121187
+        },
+        {
+          "type": "context.append_loop_event",
+          "agentId": "main",
+          "event": {
+            "type": "step.begin",
+            "uuid": "d47dee3c-170a-40da-9484-15e0c0e69f39",
+            "turnId": "0",
+            "step": 3
+          },
+          "time": 1789649121191
+        },
+        {
+          "type": "usage.record",
+          "agentId": "main",
+          "model": "relay",
+          "usage": {
+            "inputOther": 13,
+            "output": 6,
+            "inputCacheRead": 39207,
+            "inputCacheCreation": 2842
+          },
+          "usageScope": "turn",
+          "time": 1789649125266
+        },
+        {
+          "type": "context.append_loop_event",
+          "agentId": "main",
+          "event": {
+            "type": "content.part",
+            "uuid": "556f2b5e-694c-4418-823a-4911eeb2d972",
+            "turnId": "0",
+            "step": 3,
+            "stepUuid": "d47dee3c-170a-40da-9484-15e0c0e69f39",
+            "part": {
+              "type": "text",
+              "text": "KIMI_PROBE_DONE"
+            }
+          },
+          "time": 1789649125271
+        },
+        {
+          "type": "context.append_loop_event",
+          "agentId": "main",
+          "event": {
+            "type": "step.end",
+            "uuid": "d47dee3c-170a-40da-9484-15e0c0e69f39",
+            "turnId": "0",
+            "step": 3,
+            "finishReason": "end_turn",
+            "usage": {
+              "inputOther": 13,
+              "output": 6,
+              "inputCacheRead": 39207,
+              "inputCacheCreation": 2842
+            },
+            "llmFirstTokenLatencyMs": 4068,
+            "llmStreamDurationMs": 2,
+            "llmRequestBuildMs": 0,
+            "llmServerFirstTokenMs": 4068,
+            "llmServerDecodeMs": 2,
+            "llmClientConsumeMs": 0,
+            "llmClientBlockedMs": 1,
+            "messageId": "msg_1e900e1241b14748a1ba8ed5f5cd511b",
+            "providerFinishReason": "completed",
+            "rawFinishReason": "end_turn"
+          },
+          "time": 1789649125275
+        },
+        {
+          "type": "turn.ended",
+          "agentId": "main",
+          "turnId": 0,
+          "reason": "completed",
+          "durationMs": 17590,
+          "time": 1789649125277
+        },
+        {
+          "type": "file_history.checkpoint",
+          "agentId": "main",
+          "turnId": 0,
+          "phase": "end",
+          "entries": {
+            "probe.txt": {
+              "key": "file-history/a4c25c3a462047abd86f67138f5209ad1fa94f6852de8bd8287fd7bd4f218699@v2",
+              "version": 2,
+              "contentHash": "29dd5cefdb269a0413b121ff6af21e687d165d40fdb6725188acbbc4bb505278",
+              "size": 14
+            }
+          },
+          "time": 1789649125339
+        },
+        {
+          "type": "turn.prompt",
+          "agentId": "main",
+          "input": [
+            {
+              "type": "text",
+              "text": "What exact marker did you write into probe.txt in the preceding turn? Answer only that marker, without using tools."
+            }
+          ],
+          "origin": {
+            "kind": "user"
+          },
+          "promptId": "msg_01M2QPD11MAC8VJ155RB7Q59BN",
+          "turnId": 1,
+          "time": 1789649126462
+        },
+        {
+          "type": "context.append_loop_event",
+          "agentId": "main",
+          "event": {
+            "type": "step.begin",
+            "uuid": "2ea0ab83-f1d3-47bd-8480-4db2cbdcc93d",
+            "turnId": "1",
+            "step": 1
+          },
+          "time": 1789649126476
+        },
+        {
+          "type": "usage.record",
+          "agentId": "main",
+          "model": "relay",
+          "usage": {
+            "inputOther": 58,
+            "output": 5,
+            "inputCacheRead": 40507,
+            "inputCacheCreation": 1777
+          },
+          "usageScope": "turn",
+          "time": 1789649133283
+        },
+        {
+          "type": "context.append_loop_event",
+          "agentId": "main",
+          "event": {
+            "type": "content.part",
+            "uuid": "47ab14de-c8a2-4100-8836-cb298513b859",
+            "turnId": "1",
+            "step": 1,
+            "stepUuid": "2ea0ab83-f1d3-47bd-8480-4db2cbdcc93d",
+            "part": {
+              "type": "text",
+              "text": "KIMI_PROBE_OK"
+            }
+          },
+          "time": 1789649133289
+        },
+        {
+          "type": "context.append_loop_event",
+          "agentId": "main",
+          "event": {
+            "type": "step.end",
+            "uuid": "2ea0ab83-f1d3-47bd-8480-4db2cbdcc93d",
+            "turnId": "1",
+            "step": 1,
+            "finishReason": "end_turn",
+            "usage": {
+              "inputOther": 58,
+              "output": 5,
+              "inputCacheRead": 40507,
+              "inputCacheCreation": 1777
+            },
+            "llmFirstTokenLatencyMs": 6325,
+            "llmStreamDurationMs": 473,
+            "llmRequestBuildMs": 2,
+            "llmServerFirstTokenMs": 6323,
+            "llmServerDecodeMs": 473,
+            "llmClientConsumeMs": 0,
+            "llmClientBlockedMs": 5,
+            "messageId": "msg_17ac2fc3fca949a8b43316f941106b43",
+            "providerFinishReason": "completed",
+            "rawFinishReason": "end_turn"
+          },
+          "time": 1789649133290
+        },
+        {
+          "type": "turn.ended",
+          "agentId": "main",
+          "turnId": 1,
+          "reason": "completed",
+          "durationMs": 6829,
+          "time": 1789649133291
+        }
+      ]
+    },
+    {
+      "sessionId": "session_b6d26031-1e69-472c-b466-eb49d518df0b",
+      "stateVersion": 2,
+      "cwd": "D:\\DevTools\\probes\\kimi-sdk-20260917\\acp\\workspace",
+      "records": [
+        {
+          "type": "metadata",
+          "protocol_version": "1.5",
+          "created_at": 1789649342078
+        },
+        {
+          "type": "turn.prompt",
+          "agentId": "main",
+          "input": [
+            {
+              "type": "text",
+              "text": "Without using tools, write 2000 numbered lines, each containing a different short sentence about the sea."
+            }
+          ],
+          "origin": {
+            "kind": "user"
+          },
+          "promptId": "msg_01M2QPKKR9HKQW8TYECWAJV5A6",
+          "turnId": 0,
+          "time": 1789649342228
+        },
+        {
+          "type": "context.append_loop_event",
+          "agentId": "main",
+          "event": {
+            "type": "step.begin",
+            "uuid": "eefe8552-0447-4987-afcf-71c9d60a9c37",
+            "turnId": "0",
+            "step": 1
+          },
+          "time": 1789649342242
+        },
+        {
+          "type": "context.append_loop_event",
+          "agentId": "main",
+          "event": {
+            "type": "step.end",
+            "uuid": "eefe8552-0447-4987-afcf-71c9d60a9c37",
+            "turnId": "0",
+            "step": 1,
+            "finishReason": "interrupted"
+          },
+          "time": 1789649343003
+        },
+        {
+          "type": "turn.ended",
+          "agentId": "main",
+          "turnId": 0,
+          "reason": "cancelled",
+          "durationMs": 777,
+          "time": 1789649343004
+        },
+        {
+          "type": "turn.prompt",
+          "agentId": "main",
+          "input": [
+            {
+              "type": "text",
+              "text": "This is an adapter interaction probe. Call AskUserQuestion with exactly two questions: 1. Choose a color, single select, options Red and Blue. 2. Choose fruits, multiple select, options Apple, Pear, Orange. Wait for the tool response and then briefly repeat my selections. Do not use other tools."
+            }
+          ],
+          "origin": {
+            "kind": "user"
+          },
+          "promptId": "msg_01M2QPKMJ2YMN3B8WXS9PJRVY8",
+          "turnId": 1,
+          "time": 1789649343047
+        },
+        {
+          "type": "context.append_loop_event",
+          "agentId": "main",
+          "event": {
+            "type": "step.begin",
+            "uuid": "18155bdc-f0a6-4c57-b8b3-7b0d3b0cbf18",
+            "turnId": "1",
+            "step": 1
+          },
+          "time": 1789649343051
+        },
+        {
+          "type": "usage.record",
+          "agentId": "main",
+          "model": "relay",
+          "usage": {
+            "inputOther": 348,
+            "output": 62,
+            "inputCacheRead": 0,
+            "inputCacheCreation": 35313
+          },
+          "usageScope": "turn",
+          "time": 1789649349476
+        },
+        {
+          "type": "context.append_loop_event",
+          "agentId": "main",
+          "event": {
+            "type": "tool.call",
+            "uuid": "e05f7559-94c8-4a66-a8e1-bbf20e0b1fc8",
+            "turnId": "1",
+            "step": 1,
+            "stepUuid": "18155bdc-f0a6-4c57-b8b3-7b0d3b0cbf18",
+            "toolCallId": "toolu_bdrk_0171bLLXfRRepdFdHnqeJSdz",
+            "name": "AskUserQuestion",
+            "args": {
+              "questions": [
+                {
+                  "question": "Choose a color?",
+                  "options": [
+                    {
+                      "label": "Red"
+                    },
+                    {
+                      "label": "Blue"
+                    }
+                  ]
+                },
+                {
+                  "question": "Choose fruits?",
+                  "multi_select": true,
+                  "options": [
+                    {
+                      "label": "Apple"
+                    },
+                    {
+                      "label": "Pear"
+                    },
+                    {
+                      "label": "Orange"
+                    }
+                  ]
+                }
+              ]
+            }
+          },
+          "time": 1789649349505
+        },
+        {
+          "type": "context.append_loop_event",
+          "agentId": "main",
+          "event": {
+            "type": "tool.result",
+            "parentUuid": "e05f7559-94c8-4a66-a8e1-bbf20e0b1fc8",
+            "toolCallId": "toolu_bdrk_0171bLLXfRRepdFdHnqeJSdz",
+            "result": {
+              "output": "{\"answers\":{\"Choose a color?\":\"Red\",\"Choose fruits?\":\"Apple, Pear\"}}"
+            }
+          },
+          "time": 1789649349510
+        },
+        {
+          "type": "context.append_loop_event",
+          "agentId": "main",
+          "event": {
+            "type": "step.end",
+            "uuid": "18155bdc-f0a6-4c57-b8b3-7b0d3b0cbf18",
+            "turnId": "1",
+            "step": 1,
+            "finishReason": "tool_use",
+            "usage": {
+              "inputOther": 348,
+              "output": 62,
+              "inputCacheRead": 0,
+              "inputCacheCreation": 35313
+            },
+            "llmFirstTokenLatencyMs": 5659,
+            "llmStreamDurationMs": 760,
+            "llmRequestBuildMs": 0,
+            "llmServerFirstTokenMs": 5659,
+            "llmServerDecodeMs": 760,
+            "llmClientConsumeMs": 0,
+            "llmClientBlockedMs": 15,
+            "messageId": "msg_f20ee460a49844a28cd40dd490ad8818",
+            "providerFinishReason": "tool_calls",
+            "rawFinishReason": "tool_use"
+          },
+          "time": 1789649349511
+        },
+        {
+          "type": "context.append_loop_event",
+          "agentId": "main",
+          "event": {
+            "type": "step.begin",
+            "uuid": "9d192911-b858-439c-9ed4-8c28ee7998e4",
+            "turnId": "1",
+            "step": 2
+          },
+          "time": 1789649349516
+        },
+        {
+          "type": "usage.record",
+          "agentId": "main",
+          "model": "relay",
+          "usage": {
+            "inputOther": 33,
+            "output": 15,
+            "inputCacheRead": 39318,
+            "inputCacheCreation": 2850
+          },
+          "usageScope": "turn",
+          "time": 1789649356083
+        },
+        {
+          "type": "context.append_loop_event",
+          "agentId": "main",
+          "event": {
+            "type": "content.part",
+            "uuid": "5ab5bc9b-411a-4ebd-8bd0-30a1db5961f8",
+            "turnId": "1",
+            "step": 2,
+            "stepUuid": "9d192911-b858-439c-9ed4-8c28ee7998e4",
+            "part": {
+              "type": "text",
+              "text": "You chose color: Red, and fruits: Apple, Pear."
+            }
+          },
+          "time": 1789649356089
+        },
+        {
+          "type": "context.append_loop_event",
+          "agentId": "main",
+          "event": {
+            "type": "step.end",
+            "uuid": "9d192911-b858-439c-9ed4-8c28ee7998e4",
+            "turnId": "1",
+            "step": 2,
+            "finishReason": "end_turn",
+            "usage": {
+              "inputOther": 33,
+              "output": 15,
+              "inputCacheRead": 39318,
+              "inputCacheCreation": 2850
+            },
+            "llmFirstTokenLatencyMs": 5813,
+            "llmStreamDurationMs": 749,
+            "llmRequestBuildMs": 1,
+            "llmServerFirstTokenMs": 5812,
+            "llmServerDecodeMs": 749,
+            "llmClientConsumeMs": 0,
+            "llmClientBlockedMs": 6,
+            "messageId": "msg_cc8bd21f38b74fdf942a8c164688936d",
+            "providerFinishReason": "completed",
+            "rawFinishReason": "end_turn"
+          },
+          "time": 1789649356092
+        },
+        {
+          "type": "turn.ended",
+          "agentId": "main",
+          "turnId": 1,
+          "reason": "completed",
+          "durationMs": 13046,
+          "time": 1789649356093
+        }
+      ]
+    }
+  ],
+  "ok": true
+}

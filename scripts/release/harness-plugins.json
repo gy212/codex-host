@@ -12,7 +12,8 @@
     "packages/adapters/cursor-cli",
     "packages/adapters/hermes",
     "packages/adapters/qoder",
-    "packages/adapters/qoder-cn"
+    "packages/adapters/qoder-cn",
+    "packages/adapters/kimi-code"
   ],
   "runtimePackages": [
     "@agentclientprotocol/sdk",
@@ -29,6 +30,7 @@
     "fast-deep-equal",
     "fast-uri",
     "json-schema-traverse",
+    "smol-toml",
     "ws",
     "zod",
     "zod-to-json-schema"
