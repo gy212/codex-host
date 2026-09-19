@@ -22,10 +22,12 @@ import {
 import {
   harnessIdSchema,
   hostItemIdSchema,
+  nativeCheckpointRefSchema,
   nativeSessionRefSchema,
   nativeTurnRefSchema,
   type HarnessId,
   type JsonObject,
+  type NativeCheckpointRef,
   type NativeSessionRef,
   type NativeTurnRef,
 } from "@codexhost/shared-contracts";
@@ -50,6 +52,15 @@ export function createKimiNativeTurnRef(sessionId: string, turnId: number | stri
     harnessId: kimiHarnessId,
     nativeSessionId: sessionId,
     nativeTurnKey: `turn:${turnId}`,
+  });
+}
+
+export function createKimiNativeCheckpointRef(sessionId: string, turnId: number | string): NativeCheckpointRef {
+  return nativeCheckpointRefSchema.parse({
+    formatVersion: 1,
+    harnessId: kimiHarnessId,
+    nativeSessionId: sessionId,
+    checkpointId: `turn:${turnId}`,
   });
 }
 
@@ -585,6 +596,7 @@ export async function parseKimiWireLog(
 
     snapshots.push({
       nativeTurnRef: createKimiNativeTurnRef(sessionId, turnId),
+      checkpoint: createKimiNativeCheckpointRef(sessionId, turnId),
       input: turn.input.length > 0 ? turn.input : [{ type: "text", text: "" }],
       items,
       outcome,
@@ -701,4 +713,3 @@ export async function readKimiSessionUsage(
     return null;
   }
 }
-

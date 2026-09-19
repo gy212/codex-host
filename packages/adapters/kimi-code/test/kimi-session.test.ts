@@ -99,7 +99,7 @@ describe("KimiSession", () => {
 
     expect(session.harnessId).toBe("kimi-code");
     expect(session.capabilities.configuration.selectModel).toBe(true);
-    expect(session.capabilities.history.fork).toBe(false);
+    expect(session.capabilities.history.fork).toBe(true);
     expect(session.capabilities.history.rollbackLastTurn).toBe(false);
     expect(session.initialState.effectivePermissionModeId).toBe("default");
     expect(session.nativeSessionRef.nativeSessionId).toBe("session-123");
@@ -355,6 +355,12 @@ describe("KimiSession", () => {
                     nativeSessionId: "session-turn",
                     nativeTurnKey: "turn:0",
                   },
+                  checkpoint: {
+                    formatVersion: 1,
+                    harnessId: harnessIdSchema.parse("kimi-code"),
+                    nativeSessionId: "session-turn",
+                    checkpointId: "turn:0",
+                  },
                   input: [{ type: "text", text: "Say hello" }],
                   items: [],
                   outcome: { status: "succeeded" },
@@ -426,6 +432,7 @@ describe("KimiSession", () => {
       if (completed && completed.kind === "event" && completed.event.type === "turn.completed") {
         expect(completed.event.outcome.status).toBe("succeeded");
         expect(completed.event.nativeTurnRef?.nativeTurnKey).toBe("turn:0");
+        expect(completed.event.outcome.checkpoint?.checkpointId).toBe("turn:0");
       }
     });
 

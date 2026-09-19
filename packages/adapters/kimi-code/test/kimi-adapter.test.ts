@@ -189,6 +189,104 @@ effort = "medium"
 
   describe("open()", () => {
 
+    it("forks the latest native checkpoint through ACP", async () => {
+      const sessionId = "session-to-fork";
+      const sessionDir = path.join(tempDir, ".kimi-code", "sessions", sessionId);
+      const mainHomeDir = path.join(sessionDir, "agents", "main");
+      await mkdir(mainHomeDir, { recursive: true });
+      await writeFile(
+        path.join(tempDir, ".kimi-code", "session_index.jsonl"),
+        JSON.stringify({ sessionId, sessionDir }) + "\n",
+        "utf8",
+      );
+      await writeFile(
+        path.join(sessionDir, "state.json"),
+        JSON.stringify({ id: sessionId, version: 2, cwd: tempDir }),
+        "utf8",
+      );
+      await writeFile(
+        path.join(mainHomeDir, "wire.jsonl"),
+        [
+          JSON.stringify({ type: "turn.prompt", turnId: 0, input: [{ type: "text", text: "hello" }], time: 1 }),
+          JSON.stringify({ type: "turn.ended", turnId: 0, reason: "completed", time: 2 }),
+        ].join("\n") + "\n",
+        "utf8",
+      );
+
+      const adapter = new KimiAdapter(
+        { homeDirectory: tempDir },
+        { resolveExecutable: () => "kimi", createTransport: () => fakeTransport },
+      );
+
+      const result = await adapter.open({
+        kind: "fork",
+        sourceRef: { formatVersion: 1, harnessId: harnessIdSchema.parse("kimi-code"), nativeSessionId: sessionId },
+        checkpoint: {
+          formatVersion: 1,
+          harnessId: harnessIdSchema.parse("kimi-code"),
+          nativeSessionId: sessionId,
+          checkpointId: "turn:0",
+        },
+        cwd: tempDir,
+      });
+
+      expect(result.ok).toBe(true);
+      if (result.ok) {
+        expect(result.value.initialState.nativeRef?.nativeSessionId).toBe("session-forked-123");
+      }
+      expect(fakeTransport.openKinds).toContain("fork");
+    });
+
+    it("rejects non-head checkpoints because ACP fork has no history boundary", async () => {
+      const sessionId = "session-with-two-turns";
+      const sessionDir = path.join(tempDir, ".kimi-code", "sessions", sessionId);
+      const mainHomeDir = path.join(sessionDir, "agents", "main");
+      await mkdir(mainHomeDir, { recursive: true });
+      await writeFile(
+        path.join(tempDir, ".kimi-code", "session_index.jsonl"),
+        JSON.stringify({ sessionId, sessionDir }) + "\n",
+        "utf8",
+      );
+      await writeFile(
+        path.join(sessionDir, "state.json"),
+        JSON.stringify({ id: sessionId, version: 2, cwd: tempDir }),
+        "utf8",
+      );
+      await writeFile(
+        path.join(mainHomeDir, "wire.jsonl"),
+        [
+          JSON.stringify({ type: "turn.prompt", turnId: 0, input: [{ type: "text", text: "first" }], time: 1 }),
+          JSON.stringify({ type: "turn.ended", turnId: 0, reason: "completed", time: 2 }),
+          JSON.stringify({ type: "turn.prompt", turnId: 1, input: [{ type: "text", text: "second" }], time: 3 }),
+          JSON.stringify({ type: "turn.ended", turnId: 1, reason: "completed", time: 4 }),
+        ].join("\n") + "\n",
+        "utf8",
+      );
+
+      const adapter = new KimiAdapter(
+        { homeDirectory: tempDir },
+        { resolveExecutable: () => "kimi", createTransport: () => fakeTransport },
+      );
+
+      const result = await adapter.open({
+        kind: "fork",
+        sourceRef: { formatVersion: 1, harnessId: harnessIdSchema.parse("kimi-code"), nativeSessionId: sessionId },
+        checkpoint: {
+          formatVersion: 1,
+          harnessId: harnessIdSchema.parse("kimi-code"),
+          nativeSessionId: sessionId,
+          checkpointId: "turn:0",
+        },
+        cwd: tempDir,
+      });
+
+      expect(result).toMatchObject({
+        ok: false,
+        error: { code: "unsupported" },
+      });
+      expect(fakeTransport.openKinds).not.toContain("fork");
+    });
+
 
 
 

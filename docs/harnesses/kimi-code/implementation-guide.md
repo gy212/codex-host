@@ -68,7 +68,7 @@
 | Hook 订阅/回调 | `ProtocolClient` hooks | 未公开等价客户端 Hook RPC | ACP 仍使用 CLI 自己的既有 Hook 配置 |
 | 原生子 agent 事件 | `SubagentEvent` | 主要是工具输出，无完整专用子会话事件面 | 不声称完整子 agent 观察能力 |
 | 历史 | `parseSessionEvents`、`sendReplay` | `session/load` 回放有信息损失 | 用 2.0.0 原生日志补全，不使用 SDK 旧路径解析器 |
-| 精确历史 Fork | SDK 有带 `turnIndex` 的本地存储操作 | ACP 只有 source session Fork | 当前 Host `history.fork` 必须 false |
+| 精确历史 Fork | SDK 有带 `turnIndex` 的本地存储操作 | ACP 只有 source session Fork | 仅支持当前最新原生 checkpoint 的 Native Fork；更早 checkpoint 返回 `unsupported` |
 | 跨目录 Fork | 本次未验证 | 源码和实测均表明请求 cwd 被忽略 | `forkAcrossCwd: false` |
 | 回滚最后一轮 | 不从 SDK 方法名推断 | 无对应 ACP 操作 | `rollbackLastTurn: false` |
 | 模型/Thinking | Session 属性、配置解析；Thinking 属性为 boolean | `set_config_option`，Thinking 可多档 | ACP 更贴近本机新版本 |
@@ -536,12 +536,12 @@ ACP `content.type=diff` 中 oldText/newText 可能是工具预览或片段；工
 
 ### 必须明确拒绝的首版操作
 
-Host `open({kind:"fork", checkpoint})` 要求精确到指定历史边界。原生 ACP Fork 仅调用原生无 checkpoint 参数的 fork，并沿用源 cwd。因此：
+Host `open({kind:"fork", checkpoint})` 携带指定历史边界。原生 ACP Fork 没有 checkpoint 参数，只能复制源会话当前状态，并沿用源 cwd。因此首版只暴露可兑现的 Native Fork：
 
-- `history.fork=false`，相应 open 分支返回 typed unsupported。
+- `history.fork=true`，但只接受源会话当前最新的原生 checkpoint；更早 checkpoint 返回 typed `unsupported`。
 - `forkAcrossCwd=false`。
 - `rollbackLastTurn=false`，不能截掉 Host 显示历史但让原生上下文仍保留那轮。
-- 不直接编辑 Kimi 原生 state/wire 文件实现删除历史，不复制旧 SDK storage.forkSession 处理新目录。
+- 不做 Host 侧历史重放，不直接编辑 Kimi 原生 state/wire 文件实现历史截断，也不复制旧 SDK `storage.forkSession` 处理新目录。
 
 ### 可增加但不能冒充已完成的能力
 
@@ -705,7 +705,7 @@ live 模式只为这个受控测试批准 allow-once；features 模式仅为固�
 
 当前实现使用 Kimi Code 2.0.0 ACP；以下限制同时体现在能力声明、公共接口和回归测试中。
 
-- **历史派生**：原生 ACP Fork 不接收历史边界，不能满足 Host checkpoint。关闭 `history.fork`、`rollbackLastTurn`，在创建 Transport 前返回 `unsupported`，不再修改原生 `wire.jsonl` / `state.json`，不发布无法兑现的 checkpoint。
+- **历史派生**：原生 ACP Fork 不接收历史边界，只能复制源会话当前状态。Adapter 为每个原生轮次发布 checkpoint，并将其写入 `turn.completed`；仅当请求的是源会话当前最新 checkpoint 且 cwd 相同时调用原生 Fork，更早 checkpoint、跨 cwd 和 `rollbackLastTurn` 返回 typed `unsupported`，不做历史重放，也不修改原生 `wire.jsonl` / `state.json`。
 - **空历史和轮次关联**：`runtime.set_binding` / `profile.bind` 等元数据不会生成空白 `turn:0`。关联包含所有既有轮次，要求新轮次与本次输入匹配；缺失终态保持未知并明确失败，不将它改成成功。
 - **斜杠命令**：Kimi 的 `/status`、`/help` 不写入原生会话历史。Adapter 在原生 Session 目录内维护自己的 `codexhost-commands.jsonl`，保存实际输入、输出、终态和稳定 `turn:command:<Host Turn ID>` 身份；恢复时与原生历史按时间合并。该文件不进入模型上下文，也不替代或改写原生日志。持久化失败不能报告成功。未知目录命令在执行前拒绝；命令输出先收齐，再格式化为 Markdown，避免分块破坏格式。
 - **取消与故障**：取消请求不再触发 500ms 的伪造终态，等待真实 ACP prompt 响应。发送失败返回类型化错误；原生退出时先结束工具和 Turn，再发布唯一 Session fault 并结束输出流。

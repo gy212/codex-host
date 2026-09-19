@@ -104,7 +104,7 @@ export const kimiSessionCapabilities: HarnessSessionCapabilities = {
     permissionModeScope: "live",
   },
   history: {
-    fork: false,
+    fork: true,
     forkAcrossCwd: false,
     rollbackLastTurn: false,
   },
@@ -851,13 +851,17 @@ export class KimiSession implements HarnessSession {
       };
     }
 
+    const completedOutcome: TurnOutcome = currentNativeTurn?.checkpoint
+      ? { ...turnOutcome, checkpoint: currentNativeTurn.checkpoint }
+      : turnOutcome;
+
     this.#channel.emit({
       kind: "event",
       event: {
         type: "turn.completed",
         turnId,
         ...(currentNativeTurn ? { nativeTurnRef: currentNativeTurn.nativeTurnRef } : {}),
-        outcome: turnOutcome,
+        outcome: completedOutcome,
       },
     });
 

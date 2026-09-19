@@ -33,6 +33,7 @@ export {
   readKimiSessionUsage,
   createKimiNativeSessionRef,
   createKimiNativeTurnRef,
+  createKimiNativeCheckpointRef,
   type KimiStateJson,
   type KimiSessionIndexEntry,
 } from "./history.js";
