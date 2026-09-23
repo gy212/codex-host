@@ -152,10 +152,11 @@ describe("production Desktop Controller", () => {
         "antigravity",
         "kiro-cli",
         "codebuddy",
+        "workbuddy",
         "cursor-cli",
+        "hermes",
         "qoder",
         "qoder-cn",
-        "hermes",
       ],
       timeoutMs: 90_000,
     });

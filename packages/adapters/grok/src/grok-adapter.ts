@@ -1,4 +1,5 @@
 import { randomUUID } from "node:crypto";
+import { readGrokCredentials } from "./grok-credential-export.js";
 import path from "node:path";
 
 import type {
@@ -1420,6 +1421,12 @@ class GrokHarnessSession implements HarnessSession {
 }
 
 export class GrokAdapter implements HarnessAdapter {
+  readonly credentialExport = {
+    read: () =>
+      this.#closePromise
+        ? Promise.resolve([])
+        : readGrokCredentials(this.#environment ?? process.env),
+  };
   readonly commandCatalog = grokCommandCatalog;
   readonly harnessId: HarnessId = grokHarnessId;
   readonly subagents: HarnessSubagentCapability = {
